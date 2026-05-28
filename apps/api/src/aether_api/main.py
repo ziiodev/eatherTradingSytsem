@@ -148,6 +148,29 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "sleep.boot_sweep: recovery raised; continuing startup"
         )
 
+    # Sleep Phase prompt seed — upsert the three operator-editable
+    # markdown prompts (micro-worker / deep-worker / deep-system) into
+    # the ``skills`` table for each active user. Idempotent and
+    # best-effort: any failure logs WARN and does NOT abort lifespan
+    # (see :mod:`aether_api.sleep.seed`).
+    try:
+        from aether_api.db.session import get_session_maker
+        from aether_api.sleep.seed import seed_sleep_prompts
+
+        session_maker = get_session_maker()
+        async with session_maker() as seed_session:
+            await seed_sleep_prompts(seed_session)
+    except Exception:  # noqa: BLE001 — seed is best-effort.
+        import logging as _logging
+
+        _logging.getLogger(__name__).warning(
+            "sleep.seed: seeding raised; continuing startup", exc_info=True
+        )
+
+    # NOTE: Phase 4 of sleep-learning-loop wires `warm_caches(...)` here
+    # — between the seed step above and the scheduler bootstrap below.
+    # Placeholder so that change knows exactly where to insert.
+
     # Sleep Phase scheduler — feature-flagged, defaults off.
     if settings.sleep_scheduler_enabled:
         try:
