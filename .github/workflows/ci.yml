@@ -171,7 +171,7 @@ jobs:
 
       # pnpm/action-setup MUST come before setup-node so that `cache: pnpm` works.
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: ${{ env.PNPM_VERSION }}
           run_install: false
@@ -231,7 +231,7 @@ jobs:
             uv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: ${{ env.PNPM_VERSION }}
           run_install: false
