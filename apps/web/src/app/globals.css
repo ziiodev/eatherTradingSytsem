@@ -1,0 +1,72 @@
+/*
+ * Tailwind CSS v4 — CSS-first config.
+ *
+ * v4 does NOT use `@tailwind base/components/utilities` directives any more
+ * and does NOT need a `tailwind.config.js`. The single `@import "tailwindcss"`
+ * pulls in the engine, and the `@theme { ... }` block extends the design
+ * tokens that Tailwind exposes as utilities (e.g. `font-sans`, `text-accent`).
+ *
+ * The GitHub Dark palette lives in `:root` as `--background`, `--foreground`,
+ * `--border`, `--accent`, etc. RGB triplets (no commas, no `rgb()` wrapper)
+ * are used so consumers can pick alpha via `rgb(var(--background) / 0.5)`.
+ */
+
+@import "tailwindcss";
+
+@theme {
+  /* Fonts — system stack now; swap to Mona Sans in a later one-file change. */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Code",
+    "Liberation Mono", monospace;
+
+  /* Color tokens (RGB triplets — see note above). */
+  --color-background: rgb(13 17 23);
+  --color-background-elevated: rgb(22 27 34);
+  --color-foreground: rgb(230 237 243);
+  --color-foreground-muted: rgb(125 133 144);
+  --color-border: rgb(48 54 61);
+  --color-accent: rgb(47 129 247);
+  --color-accent-foreground: rgb(255 255 255);
+  --color-success: rgb(35 134 54);
+  --color-danger: rgb(218 54 51);
+  --color-warning: rgb(209 154 0);
+  --color-card: rgb(22 27 34);
+  --color-card-foreground: rgb(230 237 243);
+}
+
+:root {
+  /* GitHub Dark palette as raw RGB triplets — consumed via rgb(var(--token)). */
+  --background: 13 17 23; /* #0d1117 */
+  --background-elevated: 22 27 34; /* #161b22 */
+  --foreground: 230 237 243; /* #e6edf3 */
+  --foreground-muted: 125 133 144; /* #7d8590 */
+  --border: 48 54 61; /* #30363d */
+  --accent: 47 129 247; /* #2f81f7 — GitHub blue */
+  --accent-foreground: 255 255 255;
+  --success: 35 134 54; /* #238636 */
+  --danger: 218 54 51; /* #da3633 */
+  --warning: 209 154 0; /* #d19a00 */
+  --card: 22 27 34;
+  --card-foreground: 230 237 243;
+  --radius: 0.5rem;
+}
+
+* {
+  border-color: rgb(var(--border));
+}
+
+html,
+body {
+  background-color: rgb(var(--background));
+  color: rgb(var(--foreground));
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Slightly nicer focus rings using the accent color. */
+*:focus-visible {
+  outline: 2px solid rgb(var(--accent));
+  outline-offset: 2px;
+}

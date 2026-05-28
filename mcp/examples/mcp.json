@@ -1,0 +1,26 @@
+{
+  "_comment": "Generic MCP client config for stdio transport. Replace placeholders.",
+  "servers": {
+    "metatrader5": {
+      "transport": "stdio",
+      "command": "uv",
+      "args": [
+        "--directory",
+        "<absolute path to ./mcp project root>",
+        "run",
+        "mcp-metatrader5"
+      ],
+      "env": {
+        "MT5_WORKSPACE_DIR": "<absolute path for SQLite + run artifacts>",
+        "MT5_WINEPREFIX": "<absolute path to your Wine prefix>",
+        "MT5_TERMINAL_PATH": "<absolute path to terminal64.exe>",
+        "MT5_METAEDITOR_PATH": "<absolute path to metaeditor64.exe>",
+        "MT5_LOG_LEVEL": "INFO",
+        "MT5_LOG_JSON": "true",
+        "MT5_RUN_TIMEOUT_SECONDS": "3600",
+        "MT5_COMPILE_TIMEOUT_SECONDS": "120",
+        "MT5_XVFB": "true"
+      }
+    }
+  }
+}

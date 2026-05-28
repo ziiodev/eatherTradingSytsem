@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+          xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <Worksheet ss:Name="Optimization Results">
+    <Table>
+      <Row>
+        <Cell><Data ss:Type="String">Pass</Data></Cell>
+        <Cell><Data ss:Type="String">Result</Data></Cell>
+        <Cell><Data ss:Type="String">Profit</Data></Cell>
+        <Cell><Data ss:Type="String">Expected Payoff</Data></Cell>
+        <Cell><Data ss:Type="String">Profit Factor</Data></Cell>
+        <Cell><Data ss:Type="String">Recovery Factor</Data></Cell>
+        <Cell><Data ss:Type="String">Sharpe Ratio</Data></Cell>
+        <Cell><Data ss:Type="String">Custom</Data></Cell>
+        <Cell><Data ss:Type="String">Equity DD %</Data></Cell>
+        <Cell><Data ss:Type="String">Trades</Data></Cell>
+        <Cell><Data ss:Type="String">Lots</Data></Cell>
+        <Cell><Data ss:Type="String">StopLoss</Data></Cell>
+      </Row>
+      <Row>
+        <Cell><Data ss:Type="Number">1</Data></Cell>
+        <Cell><Data ss:Type="Number">1234.56</Data></Cell>
+        <Cell><Data ss:Type="Number">1234.56</Data></Cell>
+        <Cell><Data ss:Type="Number">5.20</Data></Cell>
+        <Cell><Data ss:Type="Number">1.33</Data></Cell>
+        <Cell><Data ss:Type="Number">2.10</Data></Cell>
+        <Cell><Data ss:Type="Number">0.85</Data></Cell>
+        <Cell><Data ss:Type="Number">0.0</Data></Cell>
+        <Cell><Data ss:Type="Number">8.0</Data></Cell>
+        <Cell><Data ss:Type="Number">237</Data></Cell>
+        <Cell><Data ss:Type="Number">0.10</Data></Cell>
+        <Cell><Data ss:Type="Number">200</Data></Cell>
+      </Row>
+      <Row>
+        <Cell><Data ss:Type="Number">2</Data></Cell>
+        <Cell><Data ss:Type="Number">980.10</Data></Cell>
+        <Cell><Data ss:Type="Number">980.10</Data></Cell>
+        <Cell><Data ss:Type="Number">4.10</Data></Cell>
+        <Cell><Data ss:Type="Number">1.18</Data></Cell>
+        <Cell><Data ss:Type="Number">1.70</Data></Cell>
+        <Cell><Data ss:Type="Number">0.62</Data></Cell>
+        <Cell><Data ss:Type="Number">0.0</Data></Cell>
+        <Cell><Data ss:Type="Number">11.5</Data></Cell>
+        <Cell><Data ss:Type="Number">240</Data></Cell>
+        <Cell><Data ss:Type="Number">0.15</Data></Cell>
+        <Cell><Data ss:Type="Number">200</Data></Cell>
+      </Row>
+      <Row>
+        <Cell><Data ss:Type="Number">3</Data></Cell>
+        <Cell><Data ss:Type="Number">-150.00</Data></Cell>
+        <Cell><Data ss:Type="Number">-150.00</Data></Cell>
+        <Cell><Data ss:Type="Number">-0.65</Data></Cell>
+        <Cell><Data ss:Type="Number">0.92</Data></Cell>
+        <Cell><Data ss:Type="Number">0.30</Data></Cell>
+        <Cell><Data ss:Type="Number">-0.10</Data></Cell>
+        <Cell><Data ss:Type="Number">0.0</Data></Cell>
+        <Cell><Data ss:Type="Number">14.2</Data></Cell>
+        <Cell><Data ss:Type="Number">230</Data></Cell>
+        <Cell><Data ss:Type="Number">0.20</Data></Cell>
+        <Cell><Data ss:Type="Number">300</Data></Cell>
+      </Row>
+    </Table>
+  </Worksheet>
+</Workbook>

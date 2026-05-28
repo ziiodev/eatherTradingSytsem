@@ -1,0 +1,8 @@
+# pnpm workspace declaration.
+#
+# Note: `mcp/` is deliberately NOT included. It is a Python-only project
+# (uv-managed, with its own `pyproject.toml` and `uv.lock`) and must not be
+# treated as a pnpm workspace member.
+packages:
+  - "apps/*"
+  - "packages/*"

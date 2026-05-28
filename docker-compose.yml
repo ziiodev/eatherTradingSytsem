@@ -1,0 +1,108 @@
+# docker-compose.yml — local development infrastructure for Aether Trading System.
+#
+# Services:
+#   - postgres     : PostgreSQL 16 (canonical persistence — DDL of users/sessions/projects/agents
+#                    relies on gen_random_uuid(), JSONB, TEXT[], TIMESTAMP, partial indexes).
+#   - adminer      : Lightweight DB browser, useful for inspecting migrations / data during dev.
+#   - docker-proxy : tecnativa/docker-socket-proxy — the API talks HTTP to this proxy and the
+#                    proxy talks to /var/run/docker.sock. The API NEVER mounts the socket
+#                    directly: an API RCE/SSRF therefore cannot pivot to host-root via the
+#                    socket. The allowlist below grants only CONTAINERS / IMAGES / BUILD;
+#                    everything else (EXEC, NETWORKS, VOLUMES, SWARM, INFO, AUTH, SECRETS,
+#                    SERVICES, TASKS, NODES, SYSTEM) is denied — that is the threat-model
+#                    boundary for the per-project Docker orchestration change.
+#
+# Production-grade orchestration (k8s, swarm, managed Postgres) is out of scope here.
+# This file is the single source of truth for: how do I bring up the DB on my laptop?
+#
+# Usage:
+#   cp .env.example .env                        # then edit secrets
+#   docker compose up -d postgres               # DB only
+#   docker compose up -d adminer                # optional UI on http://localhost:8080
+#   docker compose up -d docker-proxy postgres  # API stack needs proxy + DB
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aether-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aether
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_only_change_me}
+      POSTGRES_DB: aether
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - aether-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aether -d aether"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  adminer:
+    image: adminer:latest
+    container_name: aether-adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    networks:
+      - aether-internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # tecnativa/docker-socket-proxy — minimal allowlist for the per-project
+  # Docker orchestration control plane. The API connects over the internal
+  # compose network at tcp://docker-proxy:2375; no host port is exposed.
+  # Mount of /var/run/docker.sock is read-only on the bind itself (the proxy
+  # still POSTs through it, but the read-only bind blocks the host-side
+  # surface area to inspect / replace the socket inode).
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: aether-docker-proxy
+    restart: unless-stopped
+    environment:
+      # Allowlist — granted endpoints. Anything not listed defaults to deny.
+      CONTAINERS: "1"
+      IMAGES: "1"
+      BUILD: "1"
+      POST: "1"
+      # Explicit denials (default 0 already, listed for auditability).
+      EXEC: "0"
+      NETWORKS: "0"
+      VOLUMES: "0"
+      SWARM: "0"
+      INFO: "0"
+      SYSTEM: "0"
+      AUTH: "0"
+      SECRETS: "0"
+      SERVICES: "0"
+      TASKS: "0"
+      NODES: "0"
+      PLUGINS: "0"
+      SESSION: "0"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - aether-internal
+    # No `ports:` stanza — the proxy is reachable ONLY from the internal
+    # compose network. Bind-mount + no host port = host-root is not
+    # exposed even if a peer container is compromised on the same host.
+
+volumes:
+  postgres_data:
+    name: aether_postgres_data
+
+# Internal-only bridge network. Every service that the API stack consumes
+# (postgres, docker-proxy) joins this network so the API can address peers
+# by their service DNS name (postgres, docker-proxy).
+networks:
+  aether-internal:
+    name: aether-internal
+    driver: bridge

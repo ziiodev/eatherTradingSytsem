@@ -1,0 +1,270 @@
+# CI — Aether Trading System
+#
+# Three primary jobs run in parallel on every push to main and on every PR:
+#
+#   backend     — ruff + mypy + pytest (unit + safe integration).
+#   frontend    — pnpm lint + typecheck + vitest (happy-dom).
+#   migrations  — alembic upgrade / downgrade / re-upgrade against a real
+#                 Postgres 16 service, plus the migration reversibility
+#                 integration tests under apps/api/tests/test_migrations.py.
+#
+# A fourth job, `types-drift`, runs AFTER backend and frontend pass. It
+# regenerates the OpenAPI dump and shared-types client and fails if the
+# committed artifacts (apps/api/openapi.json, packages/shared-types/src/api.ts)
+# don't match. Contributors must run `make gen.types` locally and commit.
+#
+# Caching:
+#   - uv:  ~/.cache/uv keyed on apps/api/pyproject.toml.
+#   - pnpm: handled by actions/setup-node@v4 (cache: pnpm).
+#
+# Pinned tool versions live in the env block below so bumps land in one place.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same branch to save CI minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  # apps/web/.nvmrc pins "lts/iron"; setup-node reads it directly.
+  UV_VERSION: "0.4.27"
+  PNPM_VERSION: "9.12.3"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Backend — ruff + mypy + pytest (unit + safe integration only).
+  # ---------------------------------------------------------------------------
+  backend:
+    name: Backend (lint + typecheck + test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/${{ env.UV_VERSION }}/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Cache uv
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('apps/api/pyproject.toml') }}
+          restore-keys: |
+            uv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-
+
+      - name: Install backend deps
+        working-directory: apps/api
+        run: uv sync --frozen || uv sync
+
+      - name: Ruff (lint)
+        working-directory: apps/api
+        run: uv run ruff check src tests
+
+      - name: Mypy (typecheck)
+        working-directory: apps/api
+        run: uv run mypy src
+
+      - name: Pytest (unit + safe integration)
+        working-directory: apps/api
+        run: uv run pytest -m "not integration" --tb=short
+
+  # ---------------------------------------------------------------------------
+  # Migrations — exercise alembic against a real Postgres 16 service.
+  # ---------------------------------------------------------------------------
+  migrations:
+    name: Migrations (upgrade + downgrade)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: aether
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: aether
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aether -d aether"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://aether:ci_password@localhost:5432/aether
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/${{ env.UV_VERSION }}/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Cache uv
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('apps/api/pyproject.toml') }}
+          restore-keys: |
+            uv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-
+
+      - name: Install backend deps
+        working-directory: apps/api
+        run: uv sync --frozen || uv sync
+
+      - name: Alembic upgrade head
+        working-directory: apps/api
+        run: uv run alembic upgrade head
+
+      - name: Alembic downgrade base
+        working-directory: apps/api
+        run: uv run alembic downgrade base
+
+      - name: Alembic upgrade head (idempotency check)
+        working-directory: apps/api
+        run: uv run alembic upgrade head
+
+      - name: Integration tests (migration reversibility)
+        working-directory: apps/api
+        run: uv run pytest -m integration tests/test_migrations.py --tb=short
+
+      # ---------------------------------------------------------------------
+      # Release-gate tests — MUST pass before a release. Currently this
+      # exercises the cross-tenant isolation contract (404 NOT 403 on a
+      # cross-tenant GET). See README.md → "Release gate tests".
+      # ---------------------------------------------------------------------
+      - name: Release-gate tests (cross-tenant isolation)
+        working-directory: apps/api
+        env:
+          # JWT_SECRET is required at import time for the FastAPI app
+          # (pydantic-settings refuses to boot with a short secret).
+          JWT_SECRET: dummy_jwt_secret_at_least_32_chars_long_for_ci_only
+        run: uv run pytest -m release_gate --tb=short
+
+  # ---------------------------------------------------------------------------
+  # Frontend — pnpm lint + typecheck + vitest.
+  # ---------------------------------------------------------------------------
+  frontend:
+    name: Frontend (lint + typecheck + test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # pnpm/action-setup MUST come before setup-node so that `cache: pnpm` works.
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: pnpm install
+        # --frozen-lockfile=false: lockfile is committed but allow drift during
+        # bootstrap until Phase 7 stabilises the lock.
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Lint
+        working-directory: apps/web
+        run: pnpm lint
+
+      - name: Typecheck
+        working-directory: apps/web
+        run: pnpm typecheck
+
+      - name: Test
+        working-directory: apps/web
+        # `pnpm test` already calls `vitest run`; pass --run defensively in case
+        # the script is changed to `vitest` in the future.
+        run: pnpm test -- --run
+
+  # ---------------------------------------------------------------------------
+  # Types drift — fail if generated OpenAPI / shared-types are out of date.
+  # Runs after backend + frontend so we don't waste compute on broken trees.
+  # ---------------------------------------------------------------------------
+  types-drift:
+    name: Types drift check
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/${{ env.UV_VERSION }}/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Cache uv
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('apps/api/pyproject.toml') }}
+          restore-keys: |
+            uv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install backend deps
+        working-directory: apps/api
+        run: uv sync --frozen || uv sync
+
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Regenerate OpenAPI dump
+        working-directory: apps/api
+        # The OpenAPI dump script imports the FastAPI app, which in turn reads
+        # settings from env. Pass placeholder secrets so import-time validation
+        # of pydantic-settings doesn't blow up — no real network IO happens.
+        env:
+          JWT_SECRET: dummy_jwt_secret_at_least_32_chars_long_for_ci_only
+          DATABASE_URL: postgresql+asyncpg://placeholder:placeholder@localhost:5432/placeholder
+        run: uv run python scripts/dump_openapi.py
+
+      - name: Regenerate shared-types
+        run: pnpm --filter @aether/shared-types gen
+
+      - name: Check no drift
+        run: |
+          if ! git diff --exit-code packages/shared-types/src/api.ts apps/api/openapi.json; then
+            echo "::error::Generated OpenAPI schema or shared-types drifted. Run 'make gen.types' locally and commit the updated files." >&2
+            exit 1
+          fi

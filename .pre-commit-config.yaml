@@ -1,0 +1,85 @@
+# Pre-commit hook configuration.
+#
+# Install with: `pre-commit install` (run automatically by `make setup`).
+#
+# `mcp/` is excluded from cross-cutting hooks: it has its own tooling and
+# lockfiles, and Phase 1 must not touch it.
+
+default_language_version:
+  python: python3.12
+
+# Files matching these patterns are excluded from every hook below unless a
+# hook overrides `exclude`.
+exclude: |
+  (?x)^(
+      mcp/.*|
+      \.venv/.*|
+      node_modules/.*|
+      \.next/.*|
+      dist/.*|
+      build/.*|
+      .*\.lock|
+      pnpm-lock\.yaml
+  )$
+
+repos:
+  # ---------------------------------------------------------------------------
+  # General hygiene
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+        args: ["--allow-multiple-documents"]
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=512"]
+
+  # ---------------------------------------------------------------------------
+  # Python — ruff (lint + format) and mypy
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        # Tests can stay loose for now.
+        exclude: |
+          (?x)^(
+              .*/tests/.*|
+              .*/test_.*\.py|
+              .*/conftest\.py
+          )$
+        additional_dependencies: []
+
+  # ---------------------------------------------------------------------------
+  # JS / TS / JSON / YAML / Markdown — prettier
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v4.0.0-alpha.8
+    hooks:
+      - id: prettier
+        types_or: [javascript, jsx, ts, tsx, json, yaml, markdown, css, scss]
+
+  # ---------------------------------------------------------------------------
+  # ESLint (no-op while apps/web does not exist yet — kept wired so it
+  # activates automatically once a flat config and JS sources land).
+  # ---------------------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: eslint-placeholder
+        name: eslint (placeholder)
+        language: system
+        # Match nothing today; the real ESLint hook will replace this block
+        # in Phase 4 when apps/web lands with its own eslint config.
+        files: ^$
+        entry: bash -c 'echo "[eslint] no JS app present yet — skipping" && exit 0'
+        pass_filenames: false

@@ -1,0 +1,28 @@
+# Pre-commit — run the repo's pre-commit hooks against every PR.
+#
+# Intentionally light: hooks are also runnable locally via `pre-commit run -a`.
+# This workflow exists so PRs that bypass local hooks still get caught.
+
+name: Pre-commit
+
+on:
+  pull_request:
+
+concurrency:
+  group: pre-commit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pre-commit:
+    name: Run pre-commit hooks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run pre-commit
+        uses: pre-commit/action@v3.0.1

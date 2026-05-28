@@ -1,0 +1,44 @@
+{#- Default Dockerfile rendered by ``aether_api.docker_control.dockerfile``.
+    Every interpolated value has already been validated against the strict
+    sanitize.is_safe() allowlist BEFORE reaching this template; Jinja2
+    autoescape=True is the second line of defence, never the first.
+
+    Determinism: ordering of LABELs, ENVs, and EXPOSE must be stable so
+    the same project row produces byte-identical output across renders
+    (spec: deterministic Dockerfile preview). -#}
+FROM {{ base_image }}
+
+LABEL aether.project_id={{ project_id }}
+LABEL aether.project_name={{ project_name }}
+LABEL aether.symbol={{ symbol }}
+LABEL aether.timeframe={{ timeframe }}
+{% if broker_name -%}
+LABEL aether.broker={{ broker_name }}
+{% endif -%}
+{% if account_login -%}
+LABEL aether.account_login={{ account_login }}
+{% endif -%}
+{% if account_server -%}
+LABEL aether.account_server={{ account_server }}
+{% endif %}
+ENV AETHER_PROJECT_ID={{ project_id }}
+ENV AETHER_SYMBOL={{ symbol }}
+ENV AETHER_TIMEFRAME={{ timeframe }}
+{% if broker_name -%}
+ENV AETHER_BROKER={{ broker_name }}
+{% endif -%}
+{% if account_login -%}
+ENV AETHER_ACCOUNT_LOGIN={{ account_login }}
+{% endif -%}
+{% if account_server -%}
+ENV AETHER_ACCOUNT_SERVER={{ account_server }}
+{% endif -%}
+{% if account_currency -%}
+ENV AETHER_ACCOUNT_CURRENCY={{ account_currency }}
+{% endif %}
+{% if mcp_port -%}
+EXPOSE {{ mcp_port }}
+ENV AETHER_MCP_PORT={{ mcp_port }}
+{% endif %}
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD curl -fsS http://localhost:{{ mcp_port or '8765' }}/healthz || exit 1

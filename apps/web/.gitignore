@@ -1,0 +1,23 @@
+# Next.js build / dev artefacts
+.next/
+out/
+build/
+dist/
+
+# Dependencies
+node_modules/
+
+# Test / coverage
+coverage/
+
+# Local env (root .env.example documents shared vars; per-app overrides go in .env.local)
+.env
+.env.local
+.env.*.local
+
+# Type generation
+next-env.d.ts
+
+# Editor / OS
+.DS_Store
+*.log

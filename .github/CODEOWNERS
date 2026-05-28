@@ -1,0 +1,22 @@
+# CODEOWNERS — Aether Trading System.
+#
+# Until the team grows beyond a single maintainer, this file is intentionally
+# left as a placeholder. To enable required reviews, uncomment and replace the
+# `@owner` placeholder below with the relevant GitHub handle(s) or team.
+#
+# Examples (commented):
+#
+# # Repo-wide default reviewers
+# * @owner
+#
+# # Backend
+# /apps/api/                  @owner
+# /packages/shared-types/     @owner
+#
+# # Frontend
+# /apps/web/                  @owner
+#
+# # Infra / CI
+# /.github/                   @owner
+# /docker-compose.yml         @owner
+# /Makefile                   @owner

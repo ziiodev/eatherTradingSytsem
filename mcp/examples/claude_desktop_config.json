@@ -1,0 +1,25 @@
+{
+  "_comment": "Place this fragment under \"mcpServers\" in your claude_desktop_config.json. Replace placeholders before use.",
+  "mcpServers": {
+    "metatrader5": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "<absolute path to ./mcp project root>",
+        "run",
+        "mcp-metatrader5"
+      ],
+      "env": {
+        "MT5_WORKSPACE_DIR": "<absolute path for SQLite + run artifacts>",
+        "MT5_WINEPREFIX": "<absolute path to your Wine prefix containing MT5>",
+        "MT5_TERMINAL_PATH": "<absolute path to terminal64.exe>",
+        "MT5_METAEDITOR_PATH": "<absolute path to metaeditor64.exe>",
+        "MT5_LOG_LEVEL": "INFO",
+        "MT5_LOG_JSON": "true",
+        "MT5_RUN_TIMEOUT_SECONDS": "3600",
+        "MT5_COMPILE_TIMEOUT_SECONDS": "120",
+        "MT5_XVFB": "true"
+      }
+    }
+  }
+}

@@ -1,0 +1,81 @@
+# Dependabot — keep dependencies and CI actions fresh on a weekly cadence.
+#
+# Three ecosystems are tracked:
+#   - github-actions: bumps for workflow uses: lines in .github/workflows/.
+#   - pip:            apps/api (uv consumes the same pyproject.toml).
+#   - npm:            pnpm workspace root; pnpm-workspace.yaml lists members.
+#
+# Schedules are staggered across the week so dependabot PRs don't all land at
+# once. `open-pull-requests-limit` caps concurrent open PRs per ecosystem to
+# keep review load manageable.
+
+version: 2
+updates:
+  # ---------------------------------------------------------------------------
+  # GitHub Actions
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci(deps)"
+    labels:
+      - dependencies
+      - github-actions
+    groups:
+      actions-minor:
+        update-types:
+          - minor
+          - patch
+
+  # ---------------------------------------------------------------------------
+  # Python (apps/api) — pip ecosystem reads PEP 621 dependencies from
+  # apps/api/pyproject.toml. uv consumes the same file, so updates flow into
+  # uv.lock when contributors run `uv lock`.
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: pip
+    directory: "/apps/api"
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(api)"
+    labels:
+      - dependencies
+      - backend
+    groups:
+      api-minor:
+        update-types:
+          - minor
+          - patch
+
+  # ---------------------------------------------------------------------------
+  # JavaScript / TypeScript — pnpm workspace root.
+  # Dependabot follows pnpm-workspace.yaml and updates each workspace member.
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: wednesday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(js)"
+    labels:
+      - dependencies
+      - frontend
+    groups:
+      js-minor:
+        update-types:
+          - minor
+          - patch

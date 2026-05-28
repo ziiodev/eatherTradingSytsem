@@ -1,0 +1,100 @@
+[project]
+name = "mcp-metatrader5"
+version = "0.1.0"
+description = "MCP server bridging Claude Code to MetaTrader 5 (MT5) under Wine on Linux"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "tradingtech" },
+]
+dependencies = [
+    "mcp>=1.0.0",
+    "MetaTrader5; platform_system == 'Windows'",
+    "pydantic>=2.0",
+    "structlog>=24.1.0",
+    "anyio>=4.0",
+    "lxml>=5.0",
+    "python-dateutil>=2.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+    "mypy>=1.10",
+    "coverage>=7.5",
+]
+
+[project.scripts]
+mcp-metatrader5 = "mcp_metatrader5.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mcp_metatrader5"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "SIM",  # flake8-simplify
+    "RUF",  # ruff-specific
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["B011"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+files = ["src/mcp_metatrader5"]
+
+[[tool.mypy.overrides]]
+module = ["MetaTrader5", "MetaTrader5.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["lxml", "lxml.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "wine: requires Wine + MT5 (skipped by default)",
+    "integration: integration test (may require external resources)",
+    "e2e: end-to-end test (requires full Wine + MT5 stack)",
+]
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["src/mcp_metatrader5"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]
