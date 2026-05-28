@@ -167,9 +167,98 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "sleep.seed: seeding raised; continuing startup", exc_info=True
         )
 
-    # NOTE: Phase 4 of sleep-learning-loop wires `warm_caches(...)` here
-    # — between the seed step above and the scheduler bootstrap below.
-    # Placeholder so that change knows exactly where to insert.
+    # Sleep-Learning recovery loader — Phase 4 of sleep-learning-loop.
+    # Pulls each "live" (active|paused) project's persisted Q-Table /
+    # episodic window / semantic rules back into the in-process
+    # ``LearningCache`` so the Worker hot path never starts cold.
+    #
+    # Failure isolation: a single project failing to warm DOES NOT
+    # abort the loader for the others. Failing projects are flipped to
+    # ``status='maintenance'`` and a WARN is logged; the lifespan
+    # continues to READY regardless.
+    #
+    # Single-process assumption: the cache is in-process only (no
+    # Redis). A second backend process would have to warm independently
+    # — both paths are correct, just not shared. See
+    # :mod:`aether_api.learning.recovery` for the rationale.
+    try:
+        import logging as _logging
+        import uuid as _uuid
+
+        from sqlalchemy import select
+
+        from aether_api.db.session import get_session_maker
+        from aether_api.learning.recovery import LearningCache, warm_caches
+        from aether_api.models.project import Project
+
+        learning_cache = LearningCache()
+        # Attach to ``app.state`` so request handlers can reach the
+        # singleton without importing the module-level binding.
+        app.state.learning_cache = learning_cache
+
+        session_maker = get_session_maker()
+        async with session_maker() as warm_session:
+            stmt = select(Project.id, Project.user_id).where(
+                Project.status.in_(("active", "paused"))
+            )
+            rows = (await warm_session.execute(stmt)).all()
+            pairs: list[tuple[_uuid.UUID, _uuid.UUID]] = [
+                (row.user_id, row.id) for row in rows
+            ]
+
+        warm_result = await warm_caches(session_maker, learning_cache, pairs)
+
+        # Translate per-project failures into a status flip + WARN log.
+        # We open a fresh session because warm_caches opens / closes
+        # its own short-lived ones inside.
+        if warm_result.failed:
+            from aether_api.repositories.project_repository import (
+                ProjectRepository,
+            )
+
+            async with session_maker() as fail_session:
+                proj_repo = ProjectRepository(fail_session)
+                for failing_pid, err_str in warm_result.failed.items():
+                    # Look up the owner so update_status_if can pass
+                    # the tenant predicate.
+                    owner_stmt = select(Project.user_id).where(
+                        Project.id == failing_pid
+                    )
+                    owner = (
+                        await fail_session.execute(owner_stmt)
+                    ).scalar_one_or_none()
+                    if owner is None:
+                        # Project vanished between the warm pass and now;
+                        # nothing to flip, just log.
+                        _logging.getLogger(__name__).warning(
+                            "learning.warm: project %s failed and no longer exists: %s",
+                            failing_pid,
+                            err_str,
+                        )
+                        continue
+                    # Try both active→maintenance and paused→maintenance;
+                    # whichever the row was in moves, the other is a no-op.
+                    for from_status in ("active", "paused"):
+                        moved = await proj_repo.update_status_if(
+                            owner,
+                            failing_pid,
+                            from_status=from_status,
+                            to_status="maintenance",
+                        )
+                        if moved is not None:
+                            break
+                    _logging.getLogger(__name__).warning(
+                        "learning.warm: project %s flipped to maintenance: %s",
+                        failing_pid,
+                        err_str,
+                    )
+                await fail_session.commit()
+    except Exception:  # noqa: BLE001 — recovery is best-effort.
+        import logging as _logging
+
+        _logging.getLogger(__name__).exception(
+            "learning.warm: recovery loader raised; continuing startup"
+        )
 
     # Sleep Phase scheduler — feature-flagged, defaults off.
     if settings.sleep_scheduler_enabled:
