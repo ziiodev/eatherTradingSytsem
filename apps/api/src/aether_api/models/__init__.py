@@ -11,12 +11,16 @@ from aether_api.models.agent_skill import AgentSkill
 from aether_api.models.audit_log import AuditLog
 from aether_api.models.config_version import ConfigVersion
 from aether_api.models.container_event import ContainerEvent
+from aether_api.models.episodic_memory import EpisodicMemory
 from aether_api.models.mfa_recovery_code import MfaRecoveryCode
 from aether_api.models.order import Order, OrderApproval, OrderLog
 from aether_api.models.project import Project
+from aether_api.models.q_table import QTable
+from aether_api.models.semantic_memory import SemanticMemory
 from aether_api.models.session import UserSession
 from aether_api.models.skill import SkillDefinition
 from aether_api.models.sleep_reflection import SleepReflection
+from aether_api.models.sleep_report import SleepReport
 from aether_api.models.sleep_run import SleepRun
 from aether_api.models.user import User
 
@@ -27,13 +31,17 @@ __all__ = [
     "AuditLog",
     "ConfigVersion",
     "ContainerEvent",
+    "EpisodicMemory",
     "MfaRecoveryCode",
     "Order",
     "OrderApproval",
     "OrderLog",
     "Project",
+    "QTable",
+    "SemanticMemory",
     "SkillDefinition",
     "SleepReflection",
+    "SleepReport",
     "SleepRun",
     "User",
     "UserSession",

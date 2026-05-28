@@ -19,7 +19,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Final
 
-from sqlalchemy import CheckConstraint, ForeignKey, String, text
+from sqlalchemy import CheckConstraint, ForeignKey, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -71,9 +71,7 @@ class ConfigVersion(Base):
     risk_class: Mapped[str] = mapped_column(String(10), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
 
-    proposed_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP, server_default=text("NOW()")
-    )
+    proposed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP, server_default=text("NOW()"))
     decided_at: Mapped[datetime | None] = mapped_column(TIMESTAMP, nullable=True)
     decided_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -81,6 +79,17 @@ class ConfigVersion(Base):
         nullable=True,
     )
     applied_at: Mapped[datetime | None] = mapped_column(TIMESTAMP, nullable=True)
+
+    # --- Sleep-learning-loop columns (migration 0011)
+    # Canonical reference to the ``q_tables`` snapshot this config version
+    # pinned at promotion time (e.g. ``"v42"``). NULL for pre-0011 rows
+    # and for snapshots authored outside the learning loop.
+    q_table_version: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    # Frozen agent prompt(s) at promotion time so reverts roll back
+    # behaviour, not just numbers.
+    prompt_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Operator-friendly label rendered by the dashboard.
+    version_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
 
     # --- Relations
     project = relationship("Project", lazy="raise")

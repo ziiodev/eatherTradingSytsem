@@ -17,7 +17,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from aether_api.db.base import Base
 
 #: Mirror of the DB CHECK on ``agent_type``.
+#:
+#: Migration 0011 extends this with ``'orchestrator'`` so the Orquestador
+#: can land its own reflection alongside the other three (see
+#: ``sleep-phase-delta`` spec for sleep-learning-loop). Order is kept
+#: stable for golden-file equality in tests.
 SLEEP_REFLECTION_AGENT_TYPES: Final[tuple[str, ...]] = (
+    "orchestrator",
     "worker",
     "investigator",
     "auditor",
@@ -47,25 +53,18 @@ class SleepReflection(Base):
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
 
-    created_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP, server_default=text("NOW()")
-    )
+    created_at: Mapped[datetime | None] = mapped_column(TIMESTAMP, server_default=text("NOW()"))
 
     # --- Relations
     sleep_run = relationship("SleepRun", back_populates="reflections", lazy="raise")
 
     __table_args__ = (
         CheckConstraint(
-            "agent_type IN ('worker', 'investigator', 'auditor')",
+            "agent_type IN ('orchestrator', 'worker', 'investigator', 'auditor')",
             name="sleep_reflections_agent_type_valid",
         ),
-        UniqueConstraint(
-            "sleep_run_id", "agent_type", name="uq_sleep_reflections_run_agent"
-        ),
+        UniqueConstraint("sleep_run_id", "agent_type", name="uq_sleep_reflections_run_agent"),
     )
 
     def __repr__(self) -> str:  # pragma: no cover
-        return (
-            f"<SleepReflection sleep_run_id={self.sleep_run_id} "
-            f"agent_type={self.agent_type}>"
-        )
+        return f"<SleepReflection sleep_run_id={self.sleep_run_id} agent_type={self.agent_type}>"
