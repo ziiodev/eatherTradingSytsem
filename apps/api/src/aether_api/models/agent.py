@@ -1,9 +1,13 @@
 """``agents`` table — see CHARTER.md "Modelo de Datos: tabla `agents`".
 
 Note: ``type`` is a Python ``str`` here; the CHECK constraint on the DB
-side enforces the {worker, investigator, auditor} set. A DB ENUM would
-require a migration on every new agent type which is exactly the
-flexibility we don't want.
+side enforces the {orchestrator, worker, investigator, auditor} set. A
+DB ENUM would require a migration on every new agent type which is
+exactly the flexibility we don't want.
+
+Charter correction (migration 0010): the Orquestador IS a definable
+agent like the others. Previous wording that treated it as the backend
+control plane only was wrong.
 """
 
 from __future__ import annotations
@@ -20,14 +24,26 @@ from aether_api.db.base import Base
 
 #: Canonical agent kinds. Kept here as a Python-side reference; the DB
 #: CHECK constraint ``agents_type_valid`` is the source of truth.
-AGENT_TYPES: Final[tuple[str, ...]] = ("worker", "investigator", "auditor")
+#:
+#: Convention for ``entrypoint`` per type:
+#:   * ``orchestrator`` → ``orchestrate(ctx)`` — supervises the other
+#:     agents and decides which to dispatch.
+#:   * ``investigator`` → ``investigate(ctx)`` — analyses market state.
+#:   * ``worker``       → ``on_tick(ctx)``   — executes per-tick trading.
+#:   * ``auditor``      → ``audit(ctx)``    — checks risk + plan adherence.
+AGENT_TYPES: Final[tuple[str, ...]] = (
+    "orchestrator",
+    "worker",
+    "investigator",
+    "auditor",
+)
 
 
 class Agent(Base):
-    """Reusable agent definition (Worker / Investigator / Auditor).
+    """Reusable agent definition (Orchestrator / Worker / Investigator / Auditor).
 
-    The Orchestrator is intentionally NOT modeled here — it is the
-    backend's control plane, not a user-defined object.
+    Charter correction (migration 0010): the Orquestador is now a
+    first-class definable agent, modelled exactly like the other three.
     """
 
     __tablename__ = "agents"
@@ -68,7 +84,7 @@ class Agent(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "type IN ('worker', 'investigator', 'auditor')",
+            "type IN ('orchestrator', 'worker', 'investigator', 'auditor')",
             name="agents_type_valid",
         ),
         CheckConstraint("runtime = 'python'", name="agents_runtime_only_python"),

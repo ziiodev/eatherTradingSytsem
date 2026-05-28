@@ -17,8 +17,13 @@ import {
 } from "./agents";
 
 describe("agent constants", () => {
-  it("defines exactly three types", () => {
-    expect(AGENT_TYPES).toEqual(["worker", "investigator", "auditor"]);
+  it("defines exactly four types (charter correction — migration 0010)", () => {
+    expect(AGENT_TYPES).toEqual([
+      "orchestrator",
+      "investigator",
+      "worker",
+      "auditor",
+    ]);
   });
 
   it("ships a template for every type that includes the canonical entrypoint", () => {
@@ -27,6 +32,10 @@ describe("agent constants", () => {
       const ep = AGENT_TYPE_DEFAULT_ENTRYPOINT[kind];
       expect(tpl).toContain(`def ${ep}(`);
     }
+  });
+
+  it("uses orchestrate(ctx) as the orchestrator entrypoint convention", () => {
+    expect(AGENT_TYPE_DEFAULT_ENTRYPOINT.orchestrator).toBe("orchestrate");
   });
 });
 
@@ -40,10 +49,20 @@ describe("agentCreateSchema", () => {
     expect(parsed.name).toBe("alpha");
   });
 
+  it("accepts an orchestrator agent (charter correction — migration 0010)", () => {
+    const parsed = agentCreateSchema.parse({
+      name: "supervisor",
+      type: "orchestrator",
+      logica: "def orchestrate(ctx): return None",
+      entrypoint: "orchestrate",
+    });
+    expect(parsed.type).toBe("orchestrator");
+  });
+
   it("rejects an invalid type", () => {
     const result = agentCreateSchema.safeParse({
       name: "x",
-      type: "orchestrator",
+      type: "bogus_type",
       logica: "x",
     });
     expect(result.success).toBe(false);

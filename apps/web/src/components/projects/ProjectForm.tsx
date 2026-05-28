@@ -78,6 +78,7 @@ function detailToFormValues(detail: ProjectDetail): ProjectCreateInput {
     max_exposure: detail.max_exposure ?? undefined,
     strategy_description: detail.strategy_description ?? undefined,
     base_logic: detail.base_logic ?? undefined,
+    orchestrator_agent_id: detail.orchestrator_agent_id ?? undefined,
     worker_agent_id: detail.worker_agent_id ?? undefined,
     investigator_agent_id: detail.investigator_agent_id ?? undefined,
     auditor_agent_id: detail.auditor_agent_id ?? undefined,
@@ -99,6 +100,7 @@ const DEFAULT_VALUES: ProjectCreateInput = {
   max_daily_dd: "3.0",
   max_total_dd: "8.0",
   max_exposure: "10.0",
+  orchestrator_agent_id: undefined,
   worker_agent_id: undefined,
   investigator_agent_id: undefined,
   auditor_agent_id: undefined,
@@ -134,8 +136,11 @@ export function ProjectForm({
 
   // Track current agent selections so we can warn the operator if the
   // same agent.id is assigned to more than one slot (charter: one
-  // Worker / Investigator / Auditor per project — the backend doesn't
-  // enforce uniqueness across slots, so we flag it client-side).
+  // Orquestador / Worker / Investigador / Auditor per project — the
+  // backend doesn't enforce uniqueness across slots, so we flag it
+  // client-side).
+  const orchestratorAgentId =
+    useWatch({ control, name: "orchestrator_agent_id" }) ?? "";
   const workerAgentId =
     useWatch({ control, name: "worker_agent_id" }) ?? "";
   const investigatorAgentId =
@@ -155,6 +160,7 @@ export function ProjectForm({
     // instead of receiving the empty string (Pydantic will 422 on it).
     const normalized: ProjectCreateInput = {
       ...values,
+      orchestrator_agent_id: values.orchestrator_agent_id || null,
       worker_agent_id: values.worker_agent_id || null,
       investigator_agent_id: values.investigator_agent_id || null,
       auditor_agent_id: values.auditor_agent_id || null,
@@ -187,7 +193,11 @@ export function ProjectForm({
                 Identificación del proyecto y configuración MCP.
               </CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2">
+            {/* 5 columnas en ≥lg para que los 5 campos de identificación
+                (Nombre / Símbolo / Marco temporal / MCP URL / MCP Puerto)
+                quepan en una sola fila. Descripción y demás abajo a ancho
+                completo. */}
+            <CardContent className="grid grid-cols-1 gap-4 lg:grid-cols-5">
               <Field
                 id="name"
                 label="Nombre"
@@ -248,29 +258,32 @@ export function ProjectForm({
                 />
               </Field>
 
-              <Field
-                id="description"
-                label="Descripción"
-                error={errors.description?.message}
-                className="md:col-span-2"
-              >
-                <Textarea
+              {/* Descripción + Notas en la misma fila a 50/50 en ≥lg.
+                  En pantallas más estrechas se apilan. Se envuelven en un
+                  sub-grid dentro del col-span-5 del padre. */}
+              <div className="grid gap-4 lg:col-span-5 lg:grid-cols-2">
+                <Field
                   id="description"
-                  rows={3}
-                  {...register("description")}
-                />
-              </Field>
+                  label="Descripción"
+                  error={errors.description?.message}
+                >
+                  <Textarea
+                    id="description"
+                    rows={3}
+                    {...register("description")}
+                  />
+                </Field>
 
-              <Field
-                id="notes"
-                label="Notas"
-                error={errors.notes?.message}
-                className="md:col-span-2"
-              >
-                <Textarea id="notes" rows={3} {...register("notes")} />
-              </Field>
+                <Field
+                  id="notes"
+                  label="Notas"
+                  error={errors.notes?.message}
+                >
+                  <Textarea id="notes" rows={3} {...register("notes")} />
+                </Field>
+              </div>
 
-              <fieldset className="md:col-span-2 flex flex-col gap-2">
+              <fieldset className="flex flex-col gap-2 lg:col-span-5">
                 <legend className="text-sm font-medium text-[rgb(var(--foreground))]">
                   Sesiones de trading
                 </legend>
@@ -520,26 +533,30 @@ export function ProjectForm({
           </Card>
         </TabsContent>
 
-        {/* AGENTES — three pickers (Worker / Investigador / Auditor).
-            Each loads its own type-filtered list from /api/agents.
-            Backend already filters by current_user.id so we never see
-            other tenants' agents. */}
+        {/* AGENTES — four pickers (Orquestador / Investigador / Worker /
+            Auditor). Each loads its own type-filtered list from
+            /api/agents. Backend already filters by current_user.id so we
+            never see other tenants' agents.
+
+            Order convention (mirrors the charter prose "supervisor →
+            research → execute → audit"): Orquestador → Investigador →
+            Worker → Auditor. */}
         <TabsContent value="agentes">
           <Card>
             <CardHeader>
               <CardTitle>Agentes</CardTitle>
               <CardDescription>
-                Cada proyecto puede vincular un agente de cada tipo. El
-                Orquestador es del sistema y no se asigna aquí.
+                Cada proyecto puede vincular un agente de cada tipo
+                (Orquestador / Investigador / Worker / Auditor).
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
               <AgentSlotPicker
-                id="worker_agent_id"
-                type="worker"
-                label="Worker"
-                description="Ejecuta la lógica de trading sobre velas/tick."
-                {...register("worker_agent_id")}
+                id="orchestrator_agent_id"
+                type="orchestrator"
+                label="Orquestador"
+                description="Supervisor del proyecto — decide qué agente dispara."
+                {...register("orchestrator_agent_id")}
               />
               <AgentSlotPicker
                 id="investigator_agent_id"
@@ -549,6 +566,13 @@ export function ProjectForm({
                 {...register("investigator_agent_id")}
               />
               <AgentSlotPicker
+                id="worker_agent_id"
+                type="worker"
+                label="Worker"
+                description="Ejecuta la lógica de trading sobre velas/tick."
+                {...register("worker_agent_id")}
+              />
+              <AgentSlotPicker
                 id="auditor_agent_id"
                 type="auditor"
                 label="Auditor"
@@ -556,8 +580,9 @@ export function ProjectForm({
                 {...register("auditor_agent_id")}
               />
               {duplicateAgentWarning(
-                workerAgentId,
+                orchestratorAgentId,
                 investigatorAgentId,
+                workerAgentId,
                 auditorAgentId,
               ) && (
                 <p
@@ -565,8 +590,9 @@ export function ProjectForm({
                   className="rounded-md border border-[rgb(var(--warning)/0.4)] bg-[rgb(var(--warning)/0.1)] p-2 text-xs text-[rgb(var(--warning))]"
                 >
                   {duplicateAgentWarning(
-                    workerAgentId,
+                    orchestratorAgentId,
                     investigatorAgentId,
+                    workerAgentId,
                     auditorAgentId,
                   )}
                 </p>
@@ -754,12 +780,14 @@ const AgentSlotPicker = React.forwardRef<
 
 /**
  * Returns a human warning string if the same agent.id has been bound to
- * two distinct slots (Worker / Investigador / Auditor). Returns null
- * otherwise. The backend doesn't enforce this — we only nudge the UI.
+ * two distinct slots (Orquestador / Investigador / Worker / Auditor).
+ * Returns null otherwise. The backend doesn't enforce this — we only
+ * nudge the UI.
  */
 function duplicateAgentWarning(
-  workerId: string,
+  orchestratorId: string,
   investigatorId: string,
+  workerId: string,
   auditorId: string,
 ): string | null {
   const labels: Record<string, string[]> = {};
@@ -768,8 +796,9 @@ function duplicateAgentWarning(
     labels[id] = labels[id] ?? [];
     labels[id].push(label);
   };
-  push(workerId, "Worker");
+  push(orchestratorId, "Orquestador");
   push(investigatorId, "Investigador");
+  push(workerId, "Worker");
   push(auditorId, "Auditor");
   for (const slots of Object.values(labels)) {
     if (slots.length > 1) {

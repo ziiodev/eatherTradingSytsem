@@ -101,13 +101,54 @@ async def test_post_ignores_client_user_id(app_client) -> None:
 
 
 async def test_post_invalid_type_is_422(app_client) -> None:
+    """Unknown agent type → 422 (the four canonical types are
+    orchestrator, worker, investigator, auditor — see migration 0010)."""
     await _seed_and_login(app_client)
     resp = await app_client.post(
         "/api/agents",
-        json={"name": "n", "type": "orchestrator", "logica": LOGICA_VALID},
+        json={"name": "n", "type": "bogus_type", "logica": LOGICA_VALID},
         headers=_csrf_headers(app_client),
     )
     assert resp.status_code == 422
+
+
+async def test_post_orchestrator_type_succeeds(app_client) -> None:
+    """Charter correction (migration 0010): ``orchestrator`` is a valid
+    agent type and the POST happy path must succeed."""
+    await _seed_and_login(app_client)
+    resp = await app_client.post(
+        "/api/agents",
+        json={
+            "name": "supervisor",
+            "type": "orchestrator",
+            "logica": "def orchestrate(ctx):\n    return None\n",
+            "entrypoint": "orchestrate",
+        },
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["type"] == "orchestrator"
+    assert body["entrypoint"] == "orchestrate"
+
+
+async def test_list_filters_by_orchestrator_type(app_client) -> None:
+    """``?type=orchestrator`` must be a legal filter value."""
+    await _seed_and_login(app_client)
+    await app_client.post(
+        "/api/agents",
+        json={
+            "name": "orc",
+            "type": "orchestrator",
+            "logica": "def orchestrate(ctx):\n    return None\n",
+        },
+        headers=_csrf_headers(app_client),
+    )
+    resp = await app_client.get("/api/agents?type=orchestrator")
+    assert resp.status_code == 200
+    rows = resp.json()
+    assert len(rows) == 1
+    assert rows[0]["type"] == "orchestrator"
 
 
 async def test_post_invalid_logica_returns_422_with_line_col(app_client) -> None:
@@ -417,6 +458,45 @@ async def test_delete_returns_409_when_referenced(app_client) -> None:
     await app_client.post(
         "/api/auth/login",
         json={"email": "ref@example.com", "password": "testtesttesttest"},
+    )
+    headers = _csrf_headers(app_client)
+    resp = await app_client.delete(f"/api/agents/{agent_id}", headers=headers)
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert detail["code"] == "agent_referenced"
+    assert project_id in detail["project_ids"]
+
+
+async def test_delete_orchestrator_returns_409_when_referenced(app_client) -> None:
+    """Charter correction (migration 0010): an Orquestador agent that is
+    referenced by ``projects.orchestrator_agent_id`` must surface the
+    same 409 as the other three slot types."""
+    from aether_api.db.session import get_session_maker
+
+    from tests._helpers import seed_agent, seed_project, seed_user
+
+    maker = get_session_maker()
+    async with maker() as session:
+        owner = await seed_user(
+            session,
+            email="orc-ref@example.com",
+            password="testtesttesttest",
+        )
+        agent = await seed_agent(
+            session,
+            owner=owner,
+            name="orc-ref",
+            type="orchestrator",
+        )
+        project = await seed_project(session, owner=owner, name="orc-ref-proj")
+        project.orchestrator_agent_id = agent.id
+        await session.commit()
+        agent_id = str(agent.id)
+        project_id = str(project.id)
+
+    await app_client.post(
+        "/api/auth/login",
+        json={"email": "orc-ref@example.com", "password": "testtesttesttest"},
     )
     headers = _csrf_headers(app_client)
     resp = await app_client.delete(f"/api/agents/{agent_id}", headers=headers)

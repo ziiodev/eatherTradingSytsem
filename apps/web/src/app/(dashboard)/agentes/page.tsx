@@ -53,9 +53,10 @@ import { Badge } from "@/components/ui/badge";
 type TabKey = AgentType | "all";
 
 const TAB_LABEL: Record<TabKey, string> = {
+  orchestrator: "Orquestadores",
   worker: "Workers",
-  investigator: "Investigators",
-  auditor: "Auditors",
+  investigator: "Investigadores",
+  auditor: "Auditores",
   all: "Todos",
 };
 
@@ -153,7 +154,8 @@ export default function AgentesPage(): React.JSX.Element {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Agentes</h1>
           <p className="text-sm text-[rgb(var(--foreground-muted))]">
-            Catálogo de agentes reutilizables (Worker / Investigator / Auditor).
+            Catálogo de agentes reutilizables (Orquestador / Investigador /
+            Worker / Auditor).
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -178,13 +180,19 @@ export default function AgentesPage(): React.JSX.Element {
         className="gap-4"
       >
         <TabsList>
-          {(["worker", "investigator", "auditor", "all"] as TabKey[]).map(
-            (key) => (
-              <TabsTrigger key={key} value={key}>
-                {TAB_LABEL[key]}
-              </TabsTrigger>
-            ),
-          )}
+          {(
+            [
+              "orchestrator",
+              "investigator",
+              "worker",
+              "auditor",
+              "all",
+            ] as TabKey[]
+          ).map((key) => (
+            <TabsTrigger key={key} value={key}>
+              {TAB_LABEL[key]}
+            </TabsTrigger>
+          ))}
         </TabsList>
 
         <TabsContent value={tab}>

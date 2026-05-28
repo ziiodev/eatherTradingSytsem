@@ -106,6 +106,15 @@ class Project(Base):
     base_logic: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # --- Vinculación a agentes
+    # Charter correction (migration 0010): the Orquestador is now a
+    # first-class FK like the other three (Worker / Investigador /
+    # Auditor). Existing rows keep ``orchestrator_agent_id = NULL``
+    # until the operator wires one in the dashboard.
+    orchestrator_agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("agents.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     worker_agent_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("agents.id", ondelete="RESTRICT"),
@@ -130,6 +139,9 @@ class Project(Base):
     )
 
     # --- Parámetros por agente (JSONB libre)
+    orchestrator_params: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
     auditor_params: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
@@ -155,6 +167,9 @@ class Project(Base):
 
     # --- Relations
     user = relationship("User", lazy="raise")
+    orchestrator_agent = relationship(
+        "Agent", foreign_keys=[orchestrator_agent_id], lazy="raise"
+    )
     worker_agent = relationship("Agent", foreign_keys=[worker_agent_id], lazy="raise")
     investigator_agent = relationship("Agent", foreign_keys=[investigator_agent_id], lazy="raise")
     auditor_agent = relationship("Agent", foreign_keys=[auditor_agent_id], lazy="raise")

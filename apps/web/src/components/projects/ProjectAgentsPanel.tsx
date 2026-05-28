@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Bot, Pencil, Search, Shield } from "lucide-react";
+import { Bot, Crown, Pencil, Search, Shield } from "lucide-react";
 import { toast } from "sonner";
 
 import { ApiError } from "@/lib/api";
@@ -30,8 +30,13 @@ import {
 
 /**
  * ProjectAgentsPanel — visible on the project detail page. Renders the
- * three slot bindings (Worker / Investigator / Auditor) and a "Cambiar"
- * action that opens a Dialog with three native selects to update them.
+ * four slot bindings (Orquestador / Investigador / Worker / Auditor) and
+ * a "Cambiar" action that opens a Dialog with four native selects to
+ * update them.
+ *
+ * Charter correction (migration 0010): the Orquestador is a first-class
+ * agent slot like the other three. Order convention mirrors the charter
+ * prose "supervisor → research → execute → audit".
  *
  * Multi-tenancy: the backend filters /api/agents by current_user.id, so
  * the picker never sees other tenants' rows. We do NOT layer a client
@@ -48,7 +53,11 @@ export interface ProjectAgentsPanelProps {
 }
 
 interface SlotConfig {
-  key: "worker_agent_id" | "investigator_agent_id" | "auditor_agent_id";
+  key:
+    | "orchestrator_agent_id"
+    | "worker_agent_id"
+    | "investigator_agent_id"
+    | "auditor_agent_id";
   type: AgentType;
   label: string;
   description: string;
@@ -57,11 +66,11 @@ interface SlotConfig {
 
 const SLOTS: ReadonlyArray<SlotConfig> = [
   {
-    key: "worker_agent_id",
-    type: "worker",
-    label: "Worker",
-    description: "Ejecuta órdenes contra MT5 vía MCP.",
-    icon: Bot,
+    key: "orchestrator_agent_id",
+    type: "orchestrator",
+    label: "Orquestador",
+    description: "Supervisor del proyecto — decide qué agente dispara.",
+    icon: Crown,
   },
   {
     key: "investigator_agent_id",
@@ -69,6 +78,13 @@ const SLOTS: ReadonlyArray<SlotConfig> = [
     label: "Investigador",
     description: "Analiza mercado y emite señales.",
     icon: Search,
+  },
+  {
+    key: "worker_agent_id",
+    type: "worker",
+    label: "Worker",
+    description: "Ejecuta órdenes contra MT5 vía MCP.",
+    icon: Bot,
   },
   {
     key: "auditor_agent_id",
@@ -96,6 +112,7 @@ export function ProjectAgentsPanel({
     let cancelled = false;
     const load = async (): Promise<void> => {
       const ids = [
+        project.orchestrator_agent_id,
         project.worker_agent_id,
         project.investigator_agent_id,
         project.auditor_agent_id,
@@ -107,6 +124,7 @@ export function ProjectAgentsPanel({
       // We can't query by id list (no endpoint), so we fetch by type and
       // merge. One fetch per type that's referenced.
       const types = new Set<AgentType>();
+      if (project.orchestrator_agent_id) types.add("orchestrator");
       if (project.worker_agent_id) types.add("worker");
       if (project.investigator_agent_id) types.add("investigator");
       if (project.auditor_agent_id) types.add("auditor");
@@ -132,6 +150,7 @@ export function ProjectAgentsPanel({
       cancelled = true;
     };
   }, [
+    project.orchestrator_agent_id,
     project.worker_agent_id,
     project.investigator_agent_id,
     project.auditor_agent_id,
@@ -146,8 +165,8 @@ export function ProjectAgentsPanel({
         <div>
           <h2 className="text-base font-semibold tracking-tight">Agentes</h2>
           <p className="text-xs text-[rgb(var(--foreground-muted))]">
-            Vínculos del proyecto a las definiciones de agente (Worker /
-            Investigador / Auditor).
+            Vínculos del proyecto a las definiciones de agente
+            (Orquestador / Investigador / Worker / Auditor).
           </p>
         </div>
         <Button
@@ -159,34 +178,41 @@ export function ProjectAgentsPanel({
         </Button>
       </header>
 
-      <ul className="flex flex-col gap-2" data-testid="project-agents-list">
+      {/* 4 columnas en ≥xl, 2 en ≥md, 1 en móvil. Cada tarjeta es
+          clickable y abre el modal de edición igual que el botón de
+          arriba — cualquier punto del card es un trigger del dialog. */}
+      <ul
+        className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4"
+        data-testid="project-agents-list"
+      >
         {SLOTS.map((slot) => {
           const agentId = project[slot.key];
           const agent = agentId ? agentLookup[agentId] : undefined;
           const Icon = slot.icon;
           return (
-            <li
-              key={slot.key}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--background))] px-3 py-2"
-              data-testid={`project-agents-row-${slot.type}`}
-            >
-              <div className="flex items-center gap-2">
-                <Icon className="h-4 w-4 text-[rgb(var(--foreground-muted))]" />
-                <span className="text-sm font-medium">{slot.label}</span>
+            <li key={slot.key}>
+              <button
+                type="button"
+                onClick={() => setDialogOpen(true)}
+                className="group flex h-full w-full flex-col gap-2 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--background))] p-3 text-left transition-colors hover:border-[rgb(var(--accent))] hover:bg-[rgb(var(--background-elevated))] focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--accent))]"
+                data-testid={`project-agents-row-${slot.type}`}
+                aria-label={`Editar asignación de ${slot.label}`}
+              >
+                <div className="flex items-center gap-2">
+                  <Icon className="h-4 w-4 text-[rgb(var(--foreground-muted))] group-hover:text-[rgb(var(--accent))]" />
+                  <span className="text-sm font-medium">{slot.label}</span>
+                </div>
                 {agentId ? (
                   agent ? (
-                    <>
-                      <Link
-                        href={`/agentes/${agent.id}`}
-                        className="text-sm text-[rgb(var(--accent))] underline-offset-2 hover:underline"
-                      >
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="truncate text-sm font-medium text-[rgb(var(--foreground))]">
                         {agent.name}
-                      </Link>
+                      </span>
                       <Badge variant="accent">v{agent.version}</Badge>
                       {!agent.is_active && (
                         <Badge variant="muted">Archivado</Badge>
                       )}
-                    </>
+                    </div>
                   ) : (
                     <span className="text-xs text-[rgb(var(--foreground-muted))]">
                       {agentId.slice(0, 8)}…
@@ -197,10 +223,10 @@ export function ProjectAgentsPanel({
                     No asignado
                   </span>
                 )}
-              </div>
-              <span className="text-xs text-[rgb(var(--foreground-muted))]">
-                {slot.description}
-              </span>
+                <span className="mt-auto text-xs leading-snug text-[rgb(var(--foreground-muted))]">
+                  {slot.description}
+                </span>
+              </button>
             </li>
           );
         })}
@@ -214,7 +240,7 @@ export function ProjectAgentsPanel({
           parent project) also re-seeds the dialog state if the user
           re-opens it. */}
       <EditAgentBindingsDialog
-        key={`${dialogOpen ? "open" : "closed"}:${project.worker_agent_id ?? ""}:${project.investigator_agent_id ?? ""}:${project.auditor_agent_id ?? ""}`}
+        key={`${dialogOpen ? "open" : "closed"}:${project.orchestrator_agent_id ?? ""}:${project.worker_agent_id ?? ""}:${project.investigator_agent_id ?? ""}:${project.auditor_agent_id ?? ""}`}
         project={project}
         open={dialogOpen}
         onOpenChange={setDialogOpen}
@@ -243,6 +269,9 @@ function EditAgentBindingsDialog({
   onOpenChange,
   onSaved,
 }: EditAgentBindingsDialogProps): React.JSX.Element {
+  const [orchestratorId, setOrchestratorId] = useState<string>(
+    project.orchestrator_agent_id ?? "",
+  );
   const [workerId, setWorkerId] = useState<string>(
     project.worker_agent_id ?? "",
   );
@@ -253,6 +282,7 @@ function EditAgentBindingsDialog({
     project.auditor_agent_id ?? "",
   );
 
+  const [orchestrators, setOrchestrators] = useState<AgentSummary[]>([]);
   const [workers, setWorkers] = useState<AgentSummary[]>([]);
   const [investigators, setInvestigators] = useState<AgentSummary[]>([]);
   const [auditors, setAuditors] = useState<AgentSummary[]>([]);
@@ -265,19 +295,21 @@ function EditAgentBindingsDialog({
   // dialog opens or the underlying project slot ids change — which
   // means the useState initializers above always see fresh values.
 
-  // Load three lists when the dialog opens.
+  // Load four lists when the dialog opens.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     const load = async (): Promise<void> => {
       setLoading(true);
       try {
-        const [w, i, a] = await Promise.all([
+        const [o, w, i, a] = await Promise.all([
+          listAgents({ type: "orchestrator" }),
           listAgents({ type: "worker" }),
           listAgents({ type: "investigator" }),
           listAgents({ type: "auditor" }),
         ]);
         if (cancelled) return;
+        setOrchestrators(o);
         setWorkers(w);
         setInvestigators(i);
         setAuditors(a);
@@ -295,13 +327,20 @@ function EditAgentBindingsDialog({
   }, [open]);
 
   const dirty =
+    orchestratorId !== (project.orchestrator_agent_id ?? "") ||
     workerId !== (project.worker_agent_id ?? "") ||
     investigatorId !== (project.investigator_agent_id ?? "") ||
     auditorId !== (project.auditor_agent_id ?? "");
 
   const duplicateWarning = useMemo(
-    () => duplicateAgentWarning(workerId, investigatorId, auditorId),
-    [workerId, investigatorId, auditorId],
+    () =>
+      duplicateAgentWarning(
+        orchestratorId,
+        investigatorId,
+        workerId,
+        auditorId,
+      ),
+    [orchestratorId, investigatorId, workerId, auditorId],
   );
 
   function requestClose(): void {
@@ -321,6 +360,7 @@ function EditAgentBindingsDialog({
     setSubmitting(true);
     try {
       const updated = await patchProject(project.id, {
+        orchestrator_agent_id: orchestratorId || null,
         worker_agent_id: workerId || null,
         investigator_agent_id: investigatorId || null,
         auditor_agent_id: auditorId || null,
@@ -348,18 +388,18 @@ function EditAgentBindingsDialog({
           <DialogHeader>
             <DialogTitle>Editar asignaciones de agentes</DialogTitle>
             <DialogDescription>
-              Vincula el proyecto con una definición de Worker, Investigador
-              y/o Auditor.
+              Vincula el proyecto con una definición de Orquestador,
+              Investigador, Worker y/o Auditor.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
             <AgentDialogPicker
-              id="dlg-worker-agent"
-              label="Worker"
+              id="dlg-orchestrator-agent"
+              label="Orquestador"
               loading={loading}
-              agents={workers}
-              value={workerId}
-              onChange={setWorkerId}
+              agents={orchestrators}
+              value={orchestratorId}
+              onChange={setOrchestratorId}
             />
             <AgentDialogPicker
               id="dlg-investigator-agent"
@@ -368,6 +408,14 @@ function EditAgentBindingsDialog({
               agents={investigators}
               value={investigatorId}
               onChange={setInvestigatorId}
+            />
+            <AgentDialogPicker
+              id="dlg-worker-agent"
+              label="Worker"
+              loading={loading}
+              agents={workers}
+              value={workerId}
+              onChange={setWorkerId}
             />
             <AgentDialogPicker
               id="dlg-auditor-agent"
@@ -493,8 +541,9 @@ function AgentDialogPicker({
  * than one slot. Returns null if all picks are distinct or empty.
  */
 function duplicateAgentWarning(
-  workerId: string,
+  orchestratorId: string,
   investigatorId: string,
+  workerId: string,
   auditorId: string,
 ): string | null {
   const labels: Record<string, string[]> = {};
@@ -503,8 +552,9 @@ function duplicateAgentWarning(
     labels[id] = labels[id] ?? [];
     labels[id].push(label);
   };
-  push(workerId, "Worker");
+  push(orchestratorId, "Orquestador");
   push(investigatorId, "Investigador");
+  push(workerId, "Worker");
   push(auditorId, "Auditor");
   for (const slots of Object.values(labels)) {
     if (slots.length > 1) {

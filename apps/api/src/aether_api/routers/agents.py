@@ -63,12 +63,16 @@ router = APIRouter(prefix="/api/agents", tags=["agents"])
 # Schemas
 # ---------------------------------------------------------------------------
 
-AgentType = Literal["worker", "investigator", "auditor"]
+AgentType = Literal["orchestrator", "worker", "investigator", "auditor"]
 
 #: Default entrypoint name per agent type. The UI seeds the template
 #: with a ``def`` of the same name; if the operator renames the function
 #: without renaming ``entrypoint``, we surface a non-blocking warning.
+#:
+#: Charter correction (migration 0010): the Orquestador joins the map
+#: with ``orchestrate(ctx)`` as the canonical entrypoint.
 _DEFAULT_ENTRYPOINTS: dict[str, str] = {
+    "orchestrator": "orchestrate",
     "worker": "on_tick",
     "investigator": "investigate",
     "auditor": "audit",

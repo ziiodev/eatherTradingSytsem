@@ -17,17 +17,29 @@ import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
 // Canonical constants — mirrors ``aether_api.models.agent.AGENT_TYPES``.
+//
+// Ordering convention (mirrored in form/panel UIs): supervisor →
+// research → execute → audit, i.e. Orquestador → Investigador →
+// Worker → Auditor. The charter prose follows the same order.
 // ---------------------------------------------------------------------------
-export const AGENT_TYPES = ["worker", "investigator", "auditor"] as const;
+export const AGENT_TYPES = [
+  "orchestrator",
+  "investigator",
+  "worker",
+  "auditor",
+] as const;
 export type AgentType = (typeof AGENT_TYPES)[number];
 
 export const AGENT_TYPE_LABEL: Record<AgentType, string> = {
+  orchestrator: "Orquestador",
   worker: "Worker",
-  investigator: "Investigator",
+  investigator: "Investigador",
   auditor: "Auditor",
 };
 
 export const AGENT_TYPE_DESCRIPTION: Record<AgentType, string> = {
+  orchestrator:
+    "Supervisor del proyecto — decide qué agente dispara y resuelve conflictos.",
   worker: "Ejecuta señales sobre velas/tick — entrada/salida del mercado.",
   investigator: "Analiza estructuras, eventos y noticias — sin abrir órdenes.",
   auditor: "Verifica riesgo, salud del entorno y desviaciones del plan.",
@@ -39,6 +51,15 @@ export const AGENT_TYPE_DESCRIPTION: Record<AgentType, string> = {
  * convention surfaced by the backend warnings.
  */
 export const AGENT_TYPE_TEMPLATE: Record<AgentType, string> = {
+  orchestrator: [
+    "# Orchestrator agent — supervises the other agents of the project.",
+    "# Decides which agent to dispatch, resolves conflicts and enforces",
+    "# risk rules across Investigador / Worker / Auditor.",
+    "def orchestrate(ctx):",
+    '    """Return a dict like {"dispatch": "worker", "reason": ...} or None."""',
+    "    return None",
+    "",
+  ].join("\n"),
   worker: [
     "# Worker agent — runs once per tick.",
     "# Receives `ctx` with market/account state, returns a decision.",
@@ -70,6 +91,7 @@ export const AGENT_TYPE_TEMPLATE: Record<AgentType, string> = {
  * ``_DEFAULT_ENTRYPOINTS`` map.
  */
 export const AGENT_TYPE_DEFAULT_ENTRYPOINT: Record<AgentType, string> = {
+  orchestrator: "orchestrate",
   worker: "on_tick",
   investigator: "investigate",
   auditor: "audit",

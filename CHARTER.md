@@ -269,7 +269,10 @@ CREATE TABLE projects (
     base_logic          TEXT,                             -- Resumen humano de la estrategia. El código ejecutable vive en agents.logica.
 
     -- Vinculación a agentes (definiciones reutilizables; ver tabla agents).
-    -- El Orquestador no se modela aquí: es el supervisor del sistema, no se define por usuario.
+    -- Corrección de charter (migración 0010): el Orquestador ES un
+    -- agente definible como los otros tres. Cada proyecto vincula
+    -- cuatro agentes — Orquestador + Investigador + Worker + Auditor.
+    orchestrator_agent_id  UUID REFERENCES agents(id) ON DELETE RESTRICT,
     worker_agent_id        UUID REFERENCES agents(id) ON DELETE RESTRICT,
     investigator_agent_id  UUID REFERENCES agents(id) ON DELETE RESTRICT,
     auditor_agent_id       UUID REFERENCES agents(id) ON DELETE RESTRICT,
@@ -280,6 +283,7 @@ CREATE TABLE projects (
         CHECK (trading_sessions <@ ARRAY['sydney','shanghai','tokyo','europe','new_york']::text[]),
 
     -- Parámetros por agente (JSONB; estructura libre, evoluciona sin migraciones)
+    orchestrator_params  JSONB NOT NULL DEFAULT '{}'::jsonb,
     auditor_params       JSONB NOT NULL DEFAULT '{}'::jsonb,
     investigator_params  JSONB NOT NULL DEFAULT '{}'::jsonb,
     worker_params        JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -306,13 +310,13 @@ Notas de uso:
 - `mcp_url` + `mcp_port` identifican el endpoint MCP del contenedor MT5 de ese proyecto.
 - `account_credential_ref` es **siempre** una referencia a un secret store externo (vault, env var, etc.). **Nunca** guardar contraseñas de broker en plaintext en esta tabla.
 - `commission_per_lot`, `swap_*`, `spread_typical` son inputs para el cálculo de R:R real y para que el Auditor compute métricas netas de coste. Si el broker no expone alguno, dejar `NULL` y que los agentes lo traten como "desconocido", no como cero.
-- `auditor_params`, `investigator_params`, `worker_params` son JSONB libres. Cada agente define su propio esquema interno y lo valida en arranque. Para versionar configuraciones de agente a lo largo del tiempo (Fase de Sueño), usar `strategy_version` como ancla o, si el historial por agente se vuelve denso, mover a una tabla `project_agent_configs` aparte.
+- `orchestrator_params`, `auditor_params`, `investigator_params`, `worker_params` son JSONB libres. Cada agente define su propio esquema interno y lo valida en arranque. Para versionar configuraciones de agente a lo largo del tiempo (Fase de Sueño), usar `strategy_version` como ancla o, si el historial por agente se vuelve denso, mover a una tabla `project_agent_configs` aparte.
 - `trading_sessions` declara las **sesiones de mercado** en las que el Worker está autorizado a abrir/gestionar posiciones. Valores canónicos: `sydney` (Australia), `shanghai` (China), `tokyo` (Japón), `europe` (Londres/Frankfurt), `new_york` (NY). El array puede ser vacío (proyecto sin sesiones definidas → el Worker no opera) o contener varias. Los **horarios concretos** de cada sesión (con awareness de DST: EEUU y Europa sí, Shanghai no) viven en el backend como tabla de referencia/constantes — no en `projects`. El Auditor debe rechazar/alertar cualquier orden ejecutada fuera de la unión de las sesiones declaradas.
-- `worker_agent_id`, `investigator_agent_id`, `auditor_agent_id` apuntan a la **definición del agente** que el proyecto usa (ver tabla `agents`). Son **reutilizables**: el mismo `agents.id` puede estar referenciado por varios proyectos. La parametrización específica del proyecto va en los JSONB de arriba (`worker_params`, etc.). El Orquestador no se modela en BD: es el supervisor del sistema, no un objeto definible por usuario.
+- `orchestrator_agent_id`, `worker_agent_id`, `investigator_agent_id`, `auditor_agent_id` apuntan a la **definición del agente** que el proyecto usa (ver tabla `agents`). Son **reutilizables**: el mismo `agents.id` puede estar referenciado por varios proyectos. La parametrización específica del proyecto va en los JSONB de arriba (`orchestrator_params`, `worker_params`, etc.). **Corrección de charter (migración 0010)**: el Orquestador SÍ se modela en BD como agente definible — antes se pensaba que era sólo el plano de control del backend, esa interpretación era errónea. Cada proyecto vincula cuatro agentes: Orquestador + Investigador + Worker + Auditor. Las filas existentes mantienen `orchestrator_agent_id = NULL` hasta que el operador asigne uno.
 
 ### Modelo de Datos: tabla `agents`
 
-Cada agente (Worker, Investigador, Auditor) es una **definición reutilizable** con su propio bloque de código Python ejecutable. La sección **Agentes** del sidebar es el CRUD de esta tabla. Los proyectos referencian agentes vía FK (`projects.worker_agent_id`, etc.) y los parametrizan via los JSONB `*_params` de `projects`.
+Cada agente (Orquestador, Investigador, Worker, Auditor) es una **definición reutilizable** con su propio bloque de código Python ejecutable. La sección **Agentes** del sidebar es el CRUD de esta tabla. Los proyectos referencian agentes vía FK (`projects.orchestrator_agent_id`, `projects.worker_agent_id`, etc.) y los parametrizan via los JSONB `*_params` de `projects`.
 
 ```sql
 CREATE TABLE agents (
@@ -321,13 +325,13 @@ CREATE TABLE agents (
 
     -- Identificación
     name            VARCHAR(100) NOT NULL,
-    type            VARCHAR(20) NOT NULL,                  -- 'worker' | 'investigator' | 'auditor'
+    type            VARCHAR(20) NOT NULL,                  -- 'orchestrator' | 'worker' | 'investigator' | 'auditor'
     description     TEXT,
 
     -- Lógica ejecutable
     logica          TEXT NOT NULL,                         -- Código fuente Python. Sin límite práctico de tamaño (TEXT en Postgres).
     runtime         VARCHAR(20) NOT NULL DEFAULT 'python', -- Forzado a 'python' por CHECK. Nunca MQL5.
-    entrypoint      VARCHAR(120),                          -- Función exportada (ej. 'run', 'on_tick'). Convención por type.
+    entrypoint      VARCHAR(120),                          -- Función exportada (ej. 'orchestrate', 'on_tick'). Convención por type.
 
     -- Versionado y estado
     version         INTEGER NOT NULL DEFAULT 1,
@@ -338,15 +342,15 @@ CREATE TABLE agents (
     updated_at      TIMESTAMP DEFAULT NOW(),
 
     -- Constraints
-    CONSTRAINT agents_type_valid    CHECK (type IN ('worker', 'investigator', 'auditor')),
+    CONSTRAINT agents_type_valid    CHECK (type IN ('orchestrator', 'worker', 'investigator', 'auditor')),
     CONSTRAINT agents_runtime_only_python CHECK (runtime = 'python')
 );
 ```
 
 Notas de uso:
 - **El campo `logica` es la pieza central**: contiene el código Python que define el comportamiento del agente. Para el Worker es la lógica de trading (señales → órdenes vía MCP). Para el Investigador es la lógica de análisis de mercado. Para el Auditor es la lógica de evaluación de métricas/anomalías. **Sin MQL5 jamás** — `runtime` está constrained a `'python'` por DB. El sistema no genera EAs.
-- **`type` no incluye `orchestrator`**: el Orquestador es el plano de control del backend (FastAPI orquesta llamadas), no un agente definible por usuario. La sección "Agentes" del sidebar puede mostrarlo como info-only pero no es CRUD-able.
-- **`entrypoint`**: nombre de la función Python que el runtime invoca. Convención por `type` (p.ej. Worker = `on_tick(ctx)`, Investigador = `analyze(ctx)`, Auditor = `evaluate(ctx)`). El contrato exacto lo define el backend en su propio módulo.
+- **`type` incluye `orchestrator`** (corrección de charter, migración 0010): el Orquestador es un agente definible como los otros tres, no sólo el plano de control del backend. La sección "Agentes" del sidebar es CRUD-able para los cuatro tipos. *Nota: esta es una corrección. La redacción anterior decía que el Orquestador NO era un agente definible — esa interpretación era errónea.*
+- **`entrypoint`**: nombre de la función Python que el runtime invoca. Convención por `type` (Orquestador = `orchestrate(ctx)`, Investigador = `investigate(ctx)`, Worker = `on_tick(ctx)`, Auditor = `audit(ctx)`). El contrato exacto lo define el backend en su propio módulo.
 - **Reutilización**: un mismo `agents.id` puede ser referenciado por múltiples `projects`. La especialización por proyecto se hace vía `projects.{worker|investigator|auditor}_params` (JSONB). La `logica` lee esos params del contexto que le pasa el backend, no del DB directamente.
 - **Versionado**: `version` se incrementa en cada update. Para historial detallado (necesario en Fase de Sueño cuando el Orquestador modifica `logica`), promover a una tabla `agent_versions` aparte. No embeber historial en el propio row.
 - **Archivado, no borrado**: `ON DELETE RESTRICT` desde `projects` impide eliminar un agente referenciado. Para "borrar" se marca `is_active = false`.

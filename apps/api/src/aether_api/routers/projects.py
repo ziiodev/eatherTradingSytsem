@@ -175,6 +175,7 @@ class ProjectDetail(BaseModel):
     base_logic: str | None = None
 
     # Agentes
+    orchestrator_agent_id: uuid.UUID | None = None
     worker_agent_id: uuid.UUID | None = None
     investigator_agent_id: uuid.UUID | None = None
     auditor_agent_id: uuid.UUID | None = None
@@ -183,6 +184,7 @@ class ProjectDetail(BaseModel):
     trading_sessions: list[str] = Field(default_factory=list)
 
     # JSONB
+    orchestrator_params: dict[str, Any] = Field(default_factory=dict)
     auditor_params: dict[str, Any] = Field(default_factory=dict)
     investigator_params: dict[str, Any] = Field(default_factory=dict)
     worker_params: dict[str, Any] = Field(default_factory=dict)
@@ -243,6 +245,7 @@ class ProjectCreate(BaseModel):
     base_logic: str | None = Field(default=None, max_length=20_000)
 
     # Agentes
+    orchestrator_agent_id: uuid.UUID | None = None
     worker_agent_id: uuid.UUID | None = None
     investigator_agent_id: uuid.UUID | None = None
     auditor_agent_id: uuid.UUID | None = None
@@ -251,6 +254,7 @@ class ProjectCreate(BaseModel):
     trading_sessions: list[str] = Field(default_factory=list, max_length=10)
 
     # JSONB
+    orchestrator_params: dict[str, Any] = Field(default_factory=dict)
     auditor_params: dict[str, Any] = Field(default_factory=dict)
     investigator_params: dict[str, Any] = Field(default_factory=dict)
     worker_params: dict[str, Any] = Field(default_factory=dict)
@@ -337,12 +341,14 @@ class ProjectPatch(BaseModel):
     strategy_description: str | None = Field(default=None, max_length=4000)
     base_logic: str | None = Field(default=None, max_length=20_000)
 
+    orchestrator_agent_id: uuid.UUID | None = None
     worker_agent_id: uuid.UUID | None = None
     investigator_agent_id: uuid.UUID | None = None
     auditor_agent_id: uuid.UUID | None = None
 
     trading_sessions: list[str] | None = Field(default=None, max_length=10)
 
+    orchestrator_params: dict[str, Any] | None = None
     auditor_params: dict[str, Any] | None = None
     investigator_params: dict[str, Any] | None = None
     worker_params: dict[str, Any] | None = None
@@ -553,10 +559,12 @@ _PATCH_ALLOWED_FIELDS: frozenset[str] = frozenset(
         "max_exposure",
         "strategy_description",
         "base_logic",
+        "orchestrator_agent_id",
         "worker_agent_id",
         "investigator_agent_id",
         "auditor_agent_id",
         "trading_sessions",
+        "orchestrator_params",
         "auditor_params",
         "investigator_params",
         "worker_params",

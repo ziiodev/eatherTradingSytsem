@@ -527,3 +527,123 @@ async def test_delete_with_container_id_is_409(app_client):
 async def test_login_helper_sets_access_cookie(app_client):
     await _seed_user_and_login(app_client)
     assert app_client.cookies.get(ACCESS_COOKIE) is not None
+
+
+# ---------------------------------------------------------------------------
+# Orchestrator agent slot — added in migration 0010 (charter correction).
+# ---------------------------------------------------------------------------
+async def _seed_orchestrator_for_user(email: str) -> str:
+    """Seed an Orquestador agent owned by ``email`` and return its id."""
+    from aether_api.db.session import get_session_maker
+
+    from tests._helpers import seed_agent
+    from sqlalchemy import select
+    from aether_api.models.user import User
+
+    maker = get_session_maker()
+    async with maker() as session:
+        owner = (
+            await session.execute(select(User).where(User.email == email.lower()))
+        ).scalar_one()
+        agent = await seed_agent(
+            session,
+            owner=owner,
+            name=f"orc-{email}",
+            type="orchestrator",
+            logica="def orchestrate(ctx):\n    return None\n",
+        )
+        await session.commit()
+        return str(agent.id)
+
+
+async def test_create_project_with_orchestrator_agent_id(app_client):
+    """POST /api/projects accepts ``orchestrator_agent_id`` and persists it."""
+    await _seed_user_and_login(app_client, email="orc-c@example.com")
+    orc_id = await _seed_orchestrator_for_user("orc-c@example.com")
+
+    resp = await app_client.post(
+        "/api/projects",
+        json=_project_payload(orchestrator_agent_id=orc_id),
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["orchestrator_agent_id"] == orc_id
+    # The matching JSONB params block defaults to {} server-side.
+    assert body["orchestrator_params"] == {}
+
+
+async def test_patch_project_swaps_orchestrator(app_client):
+    """PATCH /api/projects/{id} can change the bound Orquestador in place."""
+    await _seed_user_and_login(app_client, email="orc-p@example.com")
+    orc_one = await _seed_orchestrator_for_user("orc-p@example.com")
+    # Seed a second orchestrator and grab its id.
+    from aether_api.db.session import get_session_maker
+    from aether_api.models.user import User
+    from sqlalchemy import select
+
+    from tests._helpers import seed_agent
+
+    maker = get_session_maker()
+    async with maker() as session:
+        owner = (
+            await session.execute(
+                select(User).where(User.email == "orc-p@example.com")
+            )
+        ).scalar_one()
+        second = await seed_agent(
+            session,
+            owner=owner,
+            name="orc-second",
+            type="orchestrator",
+            logica="def orchestrate(ctx):\n    return None\n",
+        )
+        await session.commit()
+        orc_two = str(second.id)
+
+    created = await _create_project(
+        app_client, orchestrator_agent_id=orc_one
+    )
+    assert created["orchestrator_agent_id"] == orc_one
+
+    resp = await app_client.patch(
+        f"/api/projects/{created['id']}",
+        json={"orchestrator_agent_id": orc_two},
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["orchestrator_agent_id"] == orc_two
+
+
+async def test_patch_project_updates_orchestrator_params(app_client):
+    """``orchestrator_params`` JSONB is patchable like the other params blocks."""
+    await _seed_user_and_login(app_client, email="orc-prm@example.com")
+    created = await _create_project(app_client)
+    resp = await app_client.patch(
+        f"/api/projects/{created['id']}",
+        json={"orchestrator_params": {"max_concurrent": 4, "mode": "strict"}},
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["orchestrator_params"] == {
+        "max_concurrent": 4,
+        "mode": "strict",
+    }
+
+
+async def test_cross_tenant_orchestrator_id_returns_404_on_get(app_client):
+    """Tenant A creates an orchestrator and a project that wires it.
+    Tenant B fetches the project by id → 404 (existence is not disclosed)."""
+    await _seed_user_and_login(app_client, email="orc-a@example.com")
+    orc_id = await _seed_orchestrator_for_user("orc-a@example.com")
+    a_project = await _create_project(
+        app_client, orchestrator_agent_id=orc_id
+    )
+
+    # Swap to tenant B.
+    app_client.cookies.clear()
+    await _seed_user_and_login(app_client, email="orc-b@example.com")
+
+    resp = await app_client.get(f"/api/projects/{a_project['id']}")
+    assert resp.status_code == 404

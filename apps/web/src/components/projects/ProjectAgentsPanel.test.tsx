@@ -57,10 +57,12 @@ const baseProject: ProjectDetail = {
   strategy_version: 1,
   strategy_description: null,
   base_logic: null,
+  orchestrator_agent_id: null,
   worker_agent_id: null,
   investigator_agent_id: null,
   auditor_agent_id: null,
   trading_sessions: [],
+  orchestrator_params: {},
   auditor_params: {},
   investigator_params: {},
   worker_params: {},
@@ -76,7 +78,7 @@ describe("ProjectAgentsPanel", () => {
     (listAgents as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   });
 
-  it("renders the three slot rows", () => {
+  it("renders the four slot rows", () => {
     render(
       <ProjectAgentsPanel
         project={baseProject}
@@ -85,10 +87,13 @@ describe("ProjectAgentsPanel", () => {
     );
 
     expect(
-      screen.getByTestId("project-agents-row-worker"),
+      screen.getByTestId("project-agents-row-orchestrator"),
     ).toBeInTheDocument();
     expect(
       screen.getByTestId("project-agents-row-investigator"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("project-agents-row-worker"),
     ).toBeInTheDocument();
     expect(
       screen.getByTestId("project-agents-row-auditor"),
@@ -104,11 +109,11 @@ describe("ProjectAgentsPanel", () => {
     );
 
     const noneCount = screen.getAllByText(/no asignado/i);
-    // One for each slot.
-    expect(noneCount.length).toBe(3);
+    // One for each slot (Orquestador / Investigador / Worker / Auditor).
+    expect(noneCount.length).toBe(4);
   });
 
-  it("opens the dialog when the operator clicks the edit button", async () => {
+  it("opens the dialog with an Orquestador picker when the edit button is clicked", async () => {
     render(
       <ProjectAgentsPanel
         project={baseProject}
@@ -124,10 +129,15 @@ describe("ProjectAgentsPanel", () => {
         screen.getByText(/editar asignaciones de agentes/i),
       ).toBeInTheDocument();
     });
-    // listAgents should be called three times (one per type) when the
-    // dialog opens.
+    // listAgents should be called four times (one per type) when the
+    // dialog opens — including the Orquestador slot added in
+    // migration 0010.
     await waitFor(() => {
-      expect(listAgents).toHaveBeenCalledTimes(3);
+      expect(listAgents).toHaveBeenCalledTimes(4);
     });
+    // The Orquestador picker must be present in the dialog.
+    expect(
+      screen.getByTestId("dlg-orchestrator-agent-select"),
+    ).toBeInTheDocument();
   });
 });

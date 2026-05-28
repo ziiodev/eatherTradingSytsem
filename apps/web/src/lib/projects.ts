@@ -125,10 +125,12 @@ export interface ProjectDetail extends ProjectSummary {
   strategy_version: number | null;
   strategy_description: string | null;
   base_logic: string | null;
+  orchestrator_agent_id: string | null;
   worker_agent_id: string | null;
   investigator_agent_id: string | null;
   auditor_agent_id: string | null;
   trading_sessions: TradingSession[];
+  orchestrator_params: Record<string, unknown>;
   auditor_params: Record<string, unknown>;
   investigator_params: Record<string, unknown>;
   worker_params: Record<string, unknown>;
@@ -220,14 +222,18 @@ export const projectCreateSchema = z.object({
   max_exposure: optionalDecimalString,
   strategy_description: z.string().max(4000).optional().nullable(),
   base_logic: z.string().max(20000).optional().nullable(),
-  // Agent bindings — each project can reference at most one Worker /
-  // Investigator / Auditor definition (the Orchestrator is system-level
-  // and not user-bound). The IDs are validated as UUIDs when present;
+  // Agent bindings — each project can reference at most one Orquestador /
+  // Investigador / Worker / Auditor definition. Charter correction
+  // (migration 0010): the Orquestador is a first-class agent slot like
+  // the other three. The IDs are validated as UUIDs when present;
   // empty string or null clears the binding server-side.
+  orchestrator_agent_id: z.string().uuid().optional().nullable(),
   worker_agent_id: z.string().uuid().optional().nullable(),
   investigator_agent_id: z.string().uuid().optional().nullable(),
   auditor_agent_id: z.string().uuid().optional().nullable(),
   trading_sessions: z.array(z.enum(TRADING_SESSIONS)).max(10).default([]),
+  // Free-form per-agent params (mirrors backend JSONB columns).
+  orchestrator_params: z.record(z.unknown()).optional(),
   tags: z.array(z.string().min(1).max(40)).max(20).optional().nullable(),
   notes: z.string().max(4000).optional().nullable(),
 });

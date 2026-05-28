@@ -77,13 +77,18 @@ class AgentRepository(BaseRepository):
             return {}
 
         # One row per (agent_id, project_id) pair where the project
-        # references the agent in any of the three FK slots. Then
+        # references the agent in any of the four FK slots. Then
         # GROUP BY agent_id and COUNT(DISTINCT project_id).
+        orchestrator_match = Project.orchestrator_agent_id.in_(agent_ids)
         worker_match = Project.worker_agent_id.in_(agent_ids)
         investigator_match = Project.investigator_agent_id.in_(agent_ids)
         auditor_match = Project.auditor_agent_id.in_(agent_ids)
 
         agent_id_expr = case(
+            (
+                Project.orchestrator_agent_id.in_(agent_ids),
+                Project.orchestrator_agent_id,
+            ),
             (Project.worker_agent_id.in_(agent_ids), Project.worker_agent_id),
             (
                 Project.investigator_agent_id.in_(agent_ids),
@@ -95,7 +100,14 @@ class AgentRepository(BaseRepository):
         stmt = (
             select(agent_id_expr, func.count(func.distinct(Project.id)))
             .where(Project.user_id == user_id)
-            .where(or_(worker_match, investigator_match, auditor_match))
+            .where(
+                or_(
+                    orchestrator_match,
+                    worker_match,
+                    investigator_match,
+                    auditor_match,
+                )
+            )
             .group_by("agent_id")
         )
         result = await self.session.execute(stmt)
@@ -115,6 +127,7 @@ class AgentRepository(BaseRepository):
             .where(Project.user_id == user_id)
             .where(
                 or_(
+                    Project.orchestrator_agent_id == agent_id,
                     Project.worker_agent_id == agent_id,
                     Project.investigator_agent_id == agent_id,
                     Project.auditor_agent_id == agent_id,
