@@ -220,6 +220,13 @@ export const projectCreateSchema = z.object({
   max_exposure: optionalDecimalString,
   strategy_description: z.string().max(4000).optional().nullable(),
   base_logic: z.string().max(20000).optional().nullable(),
+  // Agent bindings — each project can reference at most one Worker /
+  // Investigator / Auditor definition (the Orchestrator is system-level
+  // and not user-bound). The IDs are validated as UUIDs when present;
+  // empty string or null clears the binding server-side.
+  worker_agent_id: z.string().uuid().optional().nullable(),
+  investigator_agent_id: z.string().uuid().optional().nullable(),
+  auditor_agent_id: z.string().uuid().optional().nullable(),
   trading_sessions: z.array(z.enum(TRADING_SESSIONS)).max(10).default([]),
   tags: z.array(z.string().min(1).max(40)).max(20).optional().nullable(),
   notes: z.string().max(4000).optional().nullable(),

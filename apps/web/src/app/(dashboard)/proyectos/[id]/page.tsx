@@ -28,6 +28,7 @@ import {
 import { StatusBadge } from "@/components/StatusBadge";
 import { useProjectLifecycle } from "@/hooks/useProjectLifecycle";
 import { ProjectForm } from "@/components/projects/ProjectForm";
+import { ProjectAgentsPanel } from "@/components/projects/ProjectAgentsPanel";
 import { InfraestructuraPanel } from "@/components/projects/InfraestructuraPanel";
 import { OperativaPanel } from "@/components/projects/OperativaPanel";
 import { SuenoPanel } from "@/components/projects/SuenoPanel";
@@ -268,13 +269,19 @@ function ProjectTabs({
         <TabsTrigger value="sueno">Sueño</TabsTrigger>
       </TabsList>
       <TabsContent value="general">
-        <ProjectForm
-          mode="edit"
-          initial={project}
-          submitting={submitting}
-          error={error}
-          onSubmit={onSubmit}
-        />
+        <div className="flex flex-col gap-4">
+          <ProjectAgentsPanel
+            project={project}
+            onProjectUpdated={onProjectUpdated}
+          />
+          <ProjectForm
+            mode="edit"
+            initial={project}
+            submitting={submitting}
+            error={error}
+            onSubmit={onSubmit}
+          />
+        </div>
       </TabsContent>
       <TabsContent value="infraestructura">
         <InfraestructuraPanel

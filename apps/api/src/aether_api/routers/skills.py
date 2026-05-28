@@ -414,9 +414,11 @@ async def patch_skill(
         await _validate_or_422(payload.code, runtime=target_runtime)
         changes["code"] = payload.code
         bump_version = True
-    elif payload.runtime is not None and payload.runtime != skill.runtime:
-        # Runtime changed in isolation — re-validate the existing body.
-        await _validate_or_422(skill.code, runtime=target_runtime)
+    # Runtime-only flip (sin tocar el cuerpo): NO re-validamos.
+    # El operador puede cambiar markdown→python como cambio de metadato y
+    # editar el cuerpo después. Ejecutar un cuerpo no-Python como Python
+    # fallará en el sandbox (cuando aterrice), no aquí. La integridad
+    # estructural la da el CHECK DB `runtime IN ('markdown','python')`.
 
     binding_repo = AgentSkillRepository(session)
 

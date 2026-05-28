@@ -197,13 +197,14 @@ export default function SkillDetailPage(): React.JSX.Element {
         </div>
       </header>
 
-      {/* Two-column body: left metadata panel (read-only), right code viewer
-          (read-only too — body editing is intentionally not on this page). */}
-      <div className="grid flex-1 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
-        {/* Left: metadata */}
-        <div className="flex flex-col gap-3 overflow-y-auto rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--background-elevated))] p-4">
+      {/* Body layout:
+          1. Two metadata cards side-by-side at full width (auto height).
+          2. The code/markdown viewer fills ALL remaining vertical space. */}
+      <div className="grid shrink-0 grid-cols-1 gap-3 md:grid-cols-2">
+        {/* Card 1: metadatos + descripción */}
+        <div className="flex flex-col gap-3 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--background-elevated))] p-4">
           <h2 className="text-sm font-semibold tracking-tight">Metadatos</h2>
-          <dl className="grid grid-cols-2 gap-y-1 text-xs">
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
             <dt className="text-[rgb(var(--foreground-muted))]">Tipo</dt>
             <dd>{SKILL_TYPE_LABEL[skill.type]}</dd>
             <dt className="text-[rgb(var(--foreground-muted))]">Runtime</dt>
@@ -224,46 +225,51 @@ export default function SkillDetailPage(): React.JSX.Element {
               {skill.description?.trim() ? skill.description : "—"}
             </p>
           </div>
-          <Separator />
+        </div>
+
+        {/* Card 2: firmas tipadas */}
+        <div className="flex flex-col gap-3 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--background-elevated))] p-4">
+          <h2 className="text-sm font-semibold tracking-tight">Firma tipada</h2>
           <div>
             <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-[rgb(var(--foreground-muted))]">
-              Firma tipada — Entradas
+              Entradas
             </h3>
             <SignatureSummary fields={skill.input_signature.inputs} />
           </div>
+          <Separator />
           <div>
             <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-[rgb(var(--foreground-muted))]">
-              Firma tipada — Salidas
+              Salidas
             </h3>
             <SignatureSummary fields={skill.output_signature.outputs} />
           </div>
         </div>
+      </div>
 
-        {/* Right: code / markdown viewer — always read-only on this page */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--background))]">
-          <div className="flex items-center justify-between border-b border-[rgb(var(--border))] bg-[rgb(var(--background-elevated))] px-3 py-2 text-xs text-[rgb(var(--foreground-muted))]">
-            <span>
-              {skill.runtime === "markdown" ? "skill.md" : "skill.py"} — sólo
-              lectura
-            </span>
-            <span>{skill.code.length} chars</span>
-          </div>
-          <div className="min-h-0 flex-1">
-            <CodeMirrorEditor
-              value={skill.code}
-              onChange={() => {
-                /* read-only — required by wrapper contract */
-              }}
-              language={skill.runtime === "markdown" ? "markdown" : "python"}
-              readOnly
-              aria-label="Cuerpo de la skill (sólo lectura)"
-              data-testid={
-                skill.runtime === "markdown"
-                  ? "skill-markdown-readonly"
-                  : "skill-code-readonly"
-              }
-            />
-          </div>
+      {/* Code / markdown viewer — fills the rest of the page. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--background))]">
+        <div className="flex items-center justify-between border-b border-[rgb(var(--border))] bg-[rgb(var(--background-elevated))] px-3 py-2 text-xs text-[rgb(var(--foreground-muted))]">
+          <span>
+            {skill.runtime === "markdown" ? "skill.md" : "skill.py"} — sólo
+            lectura
+          </span>
+          <span>{skill.code.length} chars</span>
+        </div>
+        <div className="min-h-0 flex-1">
+          <CodeMirrorEditor
+            value={skill.code}
+            onChange={() => {
+              /* read-only — required by wrapper contract */
+            }}
+            language={skill.runtime === "markdown" ? "markdown" : "python"}
+            readOnly
+            aria-label="Cuerpo de la skill (sólo lectura)"
+            data-testid={
+              skill.runtime === "markdown"
+                ? "skill-markdown-readonly"
+                : "skill-code-readonly"
+            }
+          />
         </div>
       </div>
 
@@ -307,6 +313,9 @@ function EditSkillDialog({
   const [runtime, setRuntime] = useState<SkillRuntime>(skill.runtime);
   const [description, setDescription] = useState(skill.description ?? "");
   const [saving, setSaving] = useState(false);
+  // Confirmación de descartar — modal en vez del native `confirm()` para
+  // mantener el look GitHub Dark.
+  const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
 
   // Re-seed local form state whenever the loaded skill changes (e.g. after
   // a successful save the parent reloads and hands a fresh row in).
@@ -347,7 +356,28 @@ function EditSkillDialog({
         toast.error("La skill cambió desde que la abriste — recarga");
         onOpenChange(false);
       } else if (err instanceof ApiError && err.status === 422) {
-        toast.error("Datos inválidos");
+        const detail = (
+          err.body as {
+            detail?: { code?: string; message?: string; line?: number };
+          }
+        )?.detail;
+        if (detail?.code === "python_syntax_error") {
+          // Most common cause from THIS dialog: runtime flipped markdown→python
+          // and the existing body isn't valid Python. Tell the operator that
+          // explicitly — they can't fix it from this dialog (the body editor
+          // lives elsewhere) so suggest reverting the runtime change.
+          toast.error(
+            runtime !== skill.runtime
+              ? `El cuerpo actual no es Python válido (línea ${detail.line ?? "?"}). ` +
+                  `Vuelve a "${SKILL_RUNTIME_LABEL[skill.runtime]}" o edita el código primero.`
+              : `Error de sintaxis en línea ${detail.line ?? "?"}: ${detail.message ?? "inválido"}`,
+            { duration: 7000 },
+          );
+        } else if (detail?.code === "markdown_too_large") {
+          toast.error("El contenido markdown excede el tamaño máximo.");
+        } else {
+          toast.error(detail?.message ?? "Datos inválidos");
+        }
       } else if (err instanceof ApiError) {
         toast.error(err.message || `Error (${err.status})`);
       } else {
@@ -359,10 +389,19 @@ function EditSkillDialog({
   }
 
   function handleOpenChange(next: boolean): void {
-    if (!next && dirty && !confirm("Descartar los cambios sin guardar?")) {
+    // Si se intenta cerrar (ESC, click backdrop, botón X, Cancelar) con
+    // cambios pendientes, lanzamos el mini-modal de confirmación en vez de
+    // cerrar de golpe. Si no hay cambios, se cierra directo.
+    if (!next && dirty) {
+      setConfirmDiscardOpen(true);
       return;
     }
     onOpenChange(next);
+  }
+
+  function discardAndClose(): void {
+    setConfirmDiscardOpen(false);
+    onOpenChange(false);
   }
 
   return (
@@ -450,6 +489,35 @@ function EditSkillDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {/* Mini-modal de confirmación al intentar descartar cambios. Se
+          superpone al de edición. ESC o click backdrop solo lo cierra a él
+          (no descarta). */}
+      <Dialog open={confirmDiscardOpen} onOpenChange={setConfirmDiscardOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Descartar cambios?</DialogTitle>
+            <DialogDescription>
+              Tienes cambios sin guardar. Si cierras ahora se perderán.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmDiscardOpen(false)}
+              data-testid="discard-cancel-button"
+            >
+              Seguir editando
+            </Button>
+            <Button
+              onClick={discardAndClose}
+              data-testid="discard-confirm-button"
+            >
+              <Trash2 className="h-4 w-4" /> Descartar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

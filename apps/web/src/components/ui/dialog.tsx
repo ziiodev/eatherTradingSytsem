@@ -111,13 +111,18 @@ const DialogContent = React.forwardRef<
       onCancel={handleCancel}
       onClick={handleClick}
       className={cn(
-        // Chromium's UA stylesheet for `<dialog>:modal` ONLY sets
-        // `inset-block-{start,end}: 0` — there is no `margin: auto` nor
-        // `inset-inline: 0`, so the modal anchors to `left: 0` by default.
-        // We pin top-left to viewport center then shift the box back by
-        // half its own size with translate. This centers regardless of
-        // content width / height.
-        "fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
+        // Chromium's UA stylesheet for `<dialog>:modal` applies
+        // `inset-block-{start,end}: 0` — BOTH top and bottom are 0.
+        // Just setting `top: 50%` isn't enough: `bottom: 0` is still
+        // applied, the box stretches between top:50% and bottom:0
+        // (= half viewport), and translate-y(-50%) lifts a half-viewport
+        // box up by 25% → visually anchored to the left edge.
+        //
+        // `inset-auto` nullifies ALL 4 UA anchors first. Then we re-pin
+        // top-left to viewport center and translate the box back by
+        // half its own size. Result: true centering regardless of
+        // content dimensions.
+        "fixed inset-auto left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
         "w-[32rem] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)] overflow-auto",
         "rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--card))] p-0 text-[rgb(var(--foreground))] shadow-xl backdrop:bg-black/60",
         // The class prop on <DialogContent> can override sizing

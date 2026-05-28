@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import * as React from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useForm, useWatch, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
@@ -12,6 +14,7 @@ import {
   type ProjectCreateInput,
   type ProjectDetail,
 } from "@/lib/projects";
+import { listAgents, type AgentSummary, type AgentType } from "@/lib/agents";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -75,6 +78,9 @@ function detailToFormValues(detail: ProjectDetail): ProjectCreateInput {
     max_exposure: detail.max_exposure ?? undefined,
     strategy_description: detail.strategy_description ?? undefined,
     base_logic: detail.base_logic ?? undefined,
+    worker_agent_id: detail.worker_agent_id ?? undefined,
+    investigator_agent_id: detail.investigator_agent_id ?? undefined,
+    auditor_agent_id: detail.auditor_agent_id ?? undefined,
     trading_sessions: detail.trading_sessions,
     tags: detail.tags ?? undefined,
     notes: detail.notes ?? undefined,
@@ -93,6 +99,9 @@ const DEFAULT_VALUES: ProjectCreateInput = {
   max_daily_dd: "3.0",
   max_total_dd: "8.0",
   max_exposure: "10.0",
+  worker_agent_id: undefined,
+  investigator_agent_id: undefined,
+  auditor_agent_id: undefined,
 };
 
 export function ProjectForm({
@@ -123,6 +132,17 @@ export function ProjectForm({
   const currentSessions =
     useWatch({ control, name: "trading_sessions" }) ?? [];
 
+  // Track current agent selections so we can warn the operator if the
+  // same agent.id is assigned to more than one slot (charter: one
+  // Worker / Investigator / Auditor per project — the backend doesn't
+  // enforce uniqueness across slots, so we flag it client-side).
+  const workerAgentId =
+    useWatch({ control, name: "worker_agent_id" }) ?? "";
+  const investigatorAgentId =
+    useWatch({ control, name: "investigator_agent_id" }) ?? "";
+  const auditorAgentId =
+    useWatch({ control, name: "auditor_agent_id" }) ?? "";
+
   function toggleSession(session: (typeof TRADING_SESSIONS)[number]): void {
     const next = currentSessions.includes(session)
       ? currentSessions.filter((s) => s !== session)
@@ -131,7 +151,15 @@ export function ProjectForm({
   }
 
   const submit: SubmitHandler<ProjectCreateInput> = async (values) => {
-    await onSubmit(values);
+    // Normalize empty strings → null so the backend clears the binding
+    // instead of receiving the empty string (Pydantic will 422 on it).
+    const normalized: ProjectCreateInput = {
+      ...values,
+      worker_agent_id: values.worker_agent_id || null,
+      investigator_agent_id: values.investigator_agent_id || null,
+      auditor_agent_id: values.auditor_agent_id || null,
+    };
+    await onSubmit(normalized);
   };
 
   return (
@@ -147,6 +175,7 @@ export function ProjectForm({
           <TabsTrigger value="cuenta">Cuenta</TabsTrigger>
           <TabsTrigger value="costes">Costes</TabsTrigger>
           <TabsTrigger value="estrategia">Estrategia</TabsTrigger>
+          <TabsTrigger value="agentes">Agentes</TabsTrigger>
         </TabsList>
 
         {/* GENERAL */}
@@ -490,6 +519,61 @@ export function ProjectForm({
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* AGENTES — three pickers (Worker / Investigador / Auditor).
+            Each loads its own type-filtered list from /api/agents.
+            Backend already filters by current_user.id so we never see
+            other tenants' agents. */}
+        <TabsContent value="agentes">
+          <Card>
+            <CardHeader>
+              <CardTitle>Agentes</CardTitle>
+              <CardDescription>
+                Cada proyecto puede vincular un agente de cada tipo. El
+                Orquestador es del sistema y no se asigna aquí.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4">
+              <AgentSlotPicker
+                id="worker_agent_id"
+                type="worker"
+                label="Worker"
+                description="Ejecuta la lógica de trading sobre velas/tick."
+                {...register("worker_agent_id")}
+              />
+              <AgentSlotPicker
+                id="investigator_agent_id"
+                type="investigator"
+                label="Investigador"
+                description="Analiza mercado, eventos y noticias."
+                {...register("investigator_agent_id")}
+              />
+              <AgentSlotPicker
+                id="auditor_agent_id"
+                type="auditor"
+                label="Auditor"
+                description="Verifica riesgo, salud y desviaciones del plan."
+                {...register("auditor_agent_id")}
+              />
+              {duplicateAgentWarning(
+                workerAgentId,
+                investigatorAgentId,
+                auditorAgentId,
+              ) && (
+                <p
+                  role="alert"
+                  className="rounded-md border border-[rgb(var(--warning)/0.4)] bg-[rgb(var(--warning)/0.1)] p-2 text-xs text-[rgb(var(--warning))]"
+                >
+                  {duplicateAgentWarning(
+                    workerAgentId,
+                    investigatorAgentId,
+                    auditorAgentId,
+                  )}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       {error && (
@@ -555,3 +639,143 @@ function Field({
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Agent slot picker — used by the "Agentes" tab. Loads the list of agents
+// for a given type on mount and renders a native <Select> bound to
+// react-hook-form via spread props (`name`, `onChange`, `ref`...).
+//
+// We accept `register("worker_agent_id")` returns and forward them to the
+// inner <select>; that means the parent stays in control of validation
+// and dirty tracking.
+// ---------------------------------------------------------------------------
+interface AgentSlotPickerProps
+  extends React.SelectHTMLAttributes<HTMLSelectElement> {
+  id: string;
+  type: AgentType;
+  label: string;
+  description?: string;
+}
+
+const AgentSlotPicker = React.forwardRef<
+  HTMLSelectElement,
+  AgentSlotPickerProps
+>(function AgentSlotPicker(
+  { id, type, label, description, ...selectProps },
+  ref,
+) {
+  const [agents, setAgents] = useState<AgentSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async (): Promise<void> => {
+      setLoading(true);
+      try {
+        // Don't pre-filter by is_active — operators occasionally pick an
+        // archived agent on purpose (e.g. roll back to a prior version).
+        // We tag the inactive ones in the option label so the choice is
+        // visible.
+        const rows = await listAgents({ type });
+        if (cancelled) return;
+        setAgents(rows);
+        setLoadError(null);
+      } catch {
+        if (cancelled) return;
+        setLoadError("Error al cargar agentes");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [type]);
+
+  const activeAgents = agents.filter((a) => a.is_active);
+  const noneAvailable = !loading && !loadError && activeAgents.length === 0;
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      {description && (
+        <p className="text-xs text-[rgb(var(--foreground-muted))]">
+          {description}
+        </p>
+      )}
+      {loading ? (
+        <p
+          className="text-xs text-[rgb(var(--foreground-muted))]"
+          data-testid={`${id}-loading`}
+        >
+          Cargando…
+        </p>
+      ) : loadError ? (
+        <p
+          role="alert"
+          className="text-xs text-[rgb(var(--danger))]"
+        >
+          {loadError}
+        </p>
+      ) : (
+        <Select
+          id={id}
+          ref={ref}
+          data-testid={`${id}-select`}
+          disabled={noneAvailable}
+          {...selectProps}
+        >
+          <option value="">(sin asignar)</option>
+          {agents.map((agent) => (
+            <option key={agent.id} value={agent.id}>
+              {agent.name} v{agent.version}
+              {!agent.is_active ? " · Archivado" : ""}
+            </option>
+          ))}
+        </Select>
+      )}
+      {noneAvailable && (
+        <p className="text-xs text-[rgb(var(--foreground-muted))]">
+          No tienes agentes {label.toLowerCase()} activos.{" "}
+          <Link
+            href="/agentes"
+            className="text-[rgb(var(--accent))] underline-offset-2 hover:underline"
+          >
+            Crea uno en Agentes
+          </Link>
+          .
+        </p>
+      )}
+    </div>
+  );
+});
+
+/**
+ * Returns a human warning string if the same agent.id has been bound to
+ * two distinct slots (Worker / Investigador / Auditor). Returns null
+ * otherwise. The backend doesn't enforce this — we only nudge the UI.
+ */
+function duplicateAgentWarning(
+  workerId: string,
+  investigatorId: string,
+  auditorId: string,
+): string | null {
+  const labels: Record<string, string[]> = {};
+  const push = (id: string, label: string): void => {
+    if (!id) return;
+    labels[id] = labels[id] ?? [];
+    labels[id].push(label);
+  };
+  push(workerId, "Worker");
+  push(investigatorId, "Investigador");
+  push(auditorId, "Auditor");
+  for (const slots of Object.values(labels)) {
+    if (slots.length > 1) {
+      return `El mismo agente está asignado como ${slots.join(" y ")}. Revisa la asignación.`;
+    }
+  }
+  return null;
+}
+
