@@ -24,12 +24,32 @@ from aether_api.learning.exceptions import (
     StateKeyError,
 )
 from aether_api.learning.q_learning import q_update, state_key
+from aether_api.learning.qtable_versioning import (
+    RiskClass,
+    classify_qtable_delta,
+    worst_risk,
+)
+from aether_api.learning.recovery import (
+    LearningCache,
+    LearningCacheEntry,
+    RecoveryLoader,
+    WarmResult,
+    warm_caches,
+)
 
 __all__ = [
+    "LearningCache",
+    "LearningCacheEntry",
     "LearningError",
     "QUpdateError",
     "RecoveryError",
+    "RecoveryLoader",
+    "RiskClass",
     "StateKeyError",
+    "WarmResult",
+    "classify_qtable_delta",
     "q_update",
     "state_key",
+    "warm_caches",
+    "worst_risk",
 ]

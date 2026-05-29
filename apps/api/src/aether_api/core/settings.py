@@ -318,6 +318,17 @@ class Settings(BaseSettings):
     sleep_stale_run_minutes: int = 30
 
     # ------------------------------------------------------------------
+    # Sleep-learning loop — Q-Table classifier knob.
+    # See ``sdd/sleep-learning-loop`` (design #2070, classifier section).
+    # ------------------------------------------------------------------
+    #: Number of most-frequent ``state_key`` rows the Q-Table classifier
+    #: walks per project before falling back to the magnitude bracket.
+    #: 50 is the design default — wide enough to cover the heavy tail of
+    #: a v1 project's episodic memory, narrow enough that the walk stays
+    #: O(1) per Sleep Phase run regardless of long-tail state cardinality.
+    learning_classifier_topk: int = 50
+
+    # ------------------------------------------------------------------
     # pydantic-settings config
     # ------------------------------------------------------------------
     model_config = SettingsConfigDict(

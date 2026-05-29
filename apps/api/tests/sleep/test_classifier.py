@@ -99,3 +99,114 @@ def test_logica_field_change_is_alto() -> None:
     prop = dict(cur)
     prop["logica"] = "def on_tick(ctx):\n    return {'a': 1}\n"
     assert classify_changes(current=cur, proposed=prop) == "alto"
+
+
+# ---------------------------------------------------------------------------
+# Q-Table delta integration (sleep-learning-loop, design #2070).
+# ---------------------------------------------------------------------------
+# The Q-Table classifier in :mod:`aether_api.learning.qtable_versioning`
+# is exercised in detail under ``tests/learning/test_qtable_versioning.py``.
+# The tests below pin the **composition** with the rest of the sleep
+# classifier — max-severity merge of the two branches.
+
+
+class _StubProject:
+    """Stand-in for the Project columns the classifier reads."""
+
+    def __init__(
+        self,
+        *,
+        max_exposure: float = 10.0,
+        risk_per_trade: float = 1.0,
+        lot_size_default: float | None = None,
+    ) -> None:
+        self.max_exposure = max_exposure
+        self.risk_per_trade = risk_per_trade
+        self.lot_size_default = lot_size_default
+
+
+def test_qtable_delta_is_ignored_when_unsupplied() -> None:
+    """Default invocation behaves exactly like the pre-Phase-5 classifier."""
+    snap = _base()
+    assert classify_changes(current=snap, proposed=dict(snap)) == "bajo"
+
+
+def test_qtable_delta_alone_can_escalate_to_alto() -> None:
+    """Config-side bajo + Q-Table-side alto ⇒ alto (max-severity merge)."""
+    snap = _base()
+    project = _StubProject(max_exposure=5.0, lot_size_default=20.0)
+    qtable_delta = {
+        "old": {"s": {"open_long": 0.50}},
+        "new": {"s": {"open_long": 0.51}},  # trivial magnitude
+    }
+    result = classify_changes(
+        current=snap,
+        proposed=dict(snap),
+        qtable_delta=qtable_delta,
+        project=project,
+        top_k_states=[("s", 100)],
+    )
+    assert result == "alto"
+
+
+def test_qtable_delta_medio_floors_to_medio_when_config_is_bajo() -> None:
+    """Config-side bajo + Q-Table-side medio ⇒ medio (max-severity)."""
+    cur = _base()
+    prop = dict(cur)
+    prop["worker_params"] = {"sma_window": 31}  # +1/30 ≈ 3.3% → bajo
+    project = _StubProject()
+    qtable_delta = {
+        "old": {"s": {"close": 1.0}},
+        "new": {"s": {"close": 1.2}},  # 20% → medio
+    }
+    result = classify_changes(
+        current=cur,
+        proposed=prop,
+        qtable_delta=qtable_delta,
+        project=project,
+        top_k_states=[],  # cold start — magnitude path
+    )
+    assert result == "medio"
+
+
+def test_config_alto_dominates_qtable_bajo() -> None:
+    """Config-side alto already triggers — Q-Table check cannot relax it."""
+    cur = _base()
+    prop = dict(cur)
+    prop["risk_per_trade"] = Decimal("1.05")  # risk-cap touch ⇒ alto
+    project = _StubProject()
+    qtable_delta = {
+        "old": {"s": {"close": 1.0}},
+        "new": {"s": {"close": 1.00}},  # 0% → bajo
+    }
+    result = classify_changes(
+        current=cur,
+        proposed=prop,
+        qtable_delta=qtable_delta,
+        project=project,
+        top_k_states=[("s", 10)],
+    )
+    assert result == "alto"
+
+
+def test_qtable_delta_ignored_when_project_missing() -> None:
+    """Defence-in-depth: missing ``project`` ⇒ Q-Table branch skipped.
+
+    The classifier MUST NOT crash and MUST NOT silently substitute a
+    default project — leaking that path could mask a real escalation.
+    """
+    snap = _base()
+    qtable_delta = {
+        "old": {"s": {"open_long": 0.50}},
+        "new": {"s": {"open_long": 0.51}},
+    }
+    # No ``project`` passed — branch silently skipped, only the config
+    # side (bajo because snap == snap) decides the outcome.
+    result = classify_changes(
+        current=snap,
+        proposed=dict(snap),
+        qtable_delta=qtable_delta,
+        project=None,
+        top_k_states=[("s", 1)],
+    )
+    assert result == "bajo"

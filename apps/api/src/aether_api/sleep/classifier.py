@@ -20,12 +20,24 @@ Rules (per :file:`sdd/sleep-phase/design`):
 The classifier returns the worst class across all changes — Sleep Phase
 v1 packages every delta into a single ConfigVersion row, and human
 approval is per-row.
+
+**Q-Table extension** (``sleep-learning-loop``, design #2070): when the
+caller passes ``qtable_delta`` (the ``{"old": ..., "new": ...}`` pair
+for a candidate Q-Table promotion), the classifier delegates to
+:func:`aether_api.learning.classify_qtable_delta` and folds its risk
+class into the result via the same ``alto > medio > bajo`` max-severity
+rule. Callers that don't propose a Q-Table change leave ``qtable_delta``
+as ``None`` — the existing behaviour is unchanged.
 """
 
 from __future__ import annotations
 
 from decimal import Decimal
 from typing import Any, Final
+
+from aether_api.learning.qtable_versioning import (
+    classify_qtable_delta as _classify_qtable_delta,
+)
 
 #: Risk caps — any touch goes straight to ``alto`` per CHARTER.
 _RISK_CAP_FIELDS: Final[frozenset[str]] = frozenset(
@@ -133,6 +145,9 @@ def classify_changes(
     *,
     current: dict[str, Any],
     proposed: dict[str, Any],
+    qtable_delta: dict[str, Any] | None = None,
+    project: Any | None = None,
+    top_k_states: list[tuple[str, int]] | None = None,
 ) -> str:
     """Classify a proposed snapshot against the current snapshot.
 
@@ -140,8 +155,24 @@ def classify_changes(
     Decimal path for numeric brackets so SQLAlchemy ``Numeric`` columns
     don't lose precision.
 
-    Both arguments are JSON-like dicts (the same shape as the row stored
-    in ``config_versions.snapshot``).
+    Both ``current`` and ``proposed`` are JSON-like dicts (the same
+    shape as the row stored in ``config_versions.snapshot``).
+
+    Q-Table extension
+    -----------------
+
+    ``qtable_delta`` is an optional mapping ``{"old": dict, "new": dict}``
+    describing a candidate Q-Table promotion. When supplied, the
+    classifier also runs
+    :func:`aether_api.learning.classify_qtable_delta` over the pair and
+    folds its result into the final risk class via the same max-severity
+    rule (``alto > medio > bajo``). The Q-Table branch requires both
+    ``project`` (so the risk caps can be read) and ``top_k_states`` (the
+    classifier's TOP-K walk input); if either is missing the Q-Table
+    delta is **ignored** — never silently substitute a default that might
+    paper over a real escalation. Existing callers that don't propose a
+    Q-Table change leave the three new arguments as ``None`` and observe
+    no behavioural change.
     """
     worst = "bajo"
 
@@ -195,6 +226,24 @@ def classify_changes(
         worst = _worst(worst, _classify_value(key, was, now))
         if worst == "alto":
             return worst
+
+    # Q-Table delta — only consulted when the caller supplied both the
+    # delta and the supporting inputs (project + top_k_states). We do
+    # NOT fabricate defaults here: a missing project would make a "size
+    # > max_exposure" check meaningless, and an absent top-k list is the
+    # cold-start signal the learning classifier already knows how to
+    # interpret (empty list → magnitude-only path). Existing callers
+    # that don't promote a Q-Table simply pass ``qtable_delta=None``.
+    if qtable_delta is not None and project is not None:
+        old_table = qtable_delta.get("old") or {}
+        new_table = qtable_delta.get("new") or {}
+        qt_class = _classify_qtable_delta(
+            old_table=old_table,
+            new_table=new_table,
+            project=project,
+            top_k_states=top_k_states or [],
+        )
+        worst = _worst(worst, qt_class)
 
     return worst
 
