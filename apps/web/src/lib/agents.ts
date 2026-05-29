@@ -18,31 +18,44 @@ import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 // ---------------------------------------------------------------------------
 // Canonical constants — mirrors ``aether_api.models.agent.AGENT_TYPES``.
 //
-// Ordering convention (mirrored in form/panel UIs): supervisor →
-// research → execute → audit, i.e. Orquestador → Investigador →
-// Worker → Auditor. The charter prose follows the same order.
+// Ordering convention (mirrored in form/panel UIs and the charter
+// prose): supervisor → research news → market signal → execute →
+// sleep/teach → audit, i.e.
+// Orquestador → Investigador → Marker → Worker → Tutor → Auditor.
+//
+// Migration 0012 split the prior Investigador role:
+//   * Investigador now reads NEWS only.
+//   * Marker emits the market signal + the option to switch on.
+//   * Tutor owns the Sleep Phase mechanics.
+//   * Auditor scope expanded to q-table + MT5 reports (no DDL change).
 // ---------------------------------------------------------------------------
 export const AGENT_TYPES = [
   "orchestrator",
   "investigator",
+  "marker",
   "worker",
+  "tutor",
   "auditor",
 ] as const;
 export type AgentType = (typeof AGENT_TYPES)[number];
 
 export const AGENT_TYPE_LABEL: Record<AgentType, string> = {
   orchestrator: "Orquestador",
-  worker: "Worker",
   investigator: "Investigador",
+  marker: "Marker",
+  worker: "Worker",
+  tutor: "Tutor",
   auditor: "Auditor",
 };
 
 export const AGENT_TYPE_DESCRIPTION: Record<AgentType, string> = {
   orchestrator:
     "Supervisor del proyecto — decide qué agente dispara y resuelve conflictos.",
-  worker: "Ejecuta señales sobre velas/tick — entrada/salida del mercado.",
-  investigator: "Analiza estructuras, eventos y noticias — sin abrir órdenes.",
-  auditor: "Verifica riesgo, salud del entorno y desviaciones del plan.",
+  investigator: "Lee y resume todas las noticias relevantes.",
+  marker: "Da la señal del mercado y la opción a poner en marcha.",
+  worker: "Ejecuta órdenes contra MT5 vía MCP.",
+  tutor: "Conduce la Fase de Sueño y orquesta el aprendizaje.",
+  auditor: "Analiza la operativa, q-table y los informes de MT5.",
 };
 
 /**
@@ -54,9 +67,27 @@ export const AGENT_TYPE_TEMPLATE: Record<AgentType, string> = {
   orchestrator: [
     "# Orchestrator agent — supervises the other agents of the project.",
     "# Decides which agent to dispatch, resolves conflicts and enforces",
-    "# risk rules across Investigador / Worker / Auditor.",
+    "# risk rules across Investigador / Marker / Worker / Tutor / Auditor.",
     "def orchestrate(ctx):",
     '    """Return a dict like {"dispatch": "worker", "reason": ...} or None."""',
+    "    return None",
+    "",
+  ].join("\n"),
+  investigator: [
+    "# Investigator agent — runs on schedule or event.",
+    "# Reads NEWS sources only (post-migration 0012) and emits a",
+    "# structured summary the Marker / Worker can consume downstream.",
+    "def analyze_news(ctx):",
+    '    """Return a dict of news findings or None."""',
+    "    return None",
+    "",
+  ].join("\n"),
+  marker: [
+    "# Marker agent — emits the current market regime and the option",
+    "# the project should switch on next. Replaces the prior",
+    "# Investigador signal role (migration 0012).",
+    "def mark_signal(ctx):",
+    '    """Return a dict like {"regime": "trend_up", "option": "long_only"} or None."""',
     "    return None",
     "",
   ].join("\n"),
@@ -68,18 +99,19 @@ export const AGENT_TYPE_TEMPLATE: Record<AgentType, string> = {
     "    return None",
     "",
   ].join("\n"),
-  investigator: [
-    "# Investigator agent — runs on schedule or event.",
-    "# Reads context and emits findings/insights for the Worker to consume.",
-    "def investigate(ctx):",
-    '    """Return a dict of findings or None."""',
+  tutor: [
+    "# Tutor agent — conducts the Sleep Phase (Micro / Profundo /",
+    "# Crítico). Orchestrates the learning loop; the Orquestador",
+    "# supervises and applies the resulting proposals (migration 0012).",
+    "def on_sleep(ctx):",
+    '    """Return a dict of proposed updates or None."""',
     "    return None",
     "",
   ].join("\n"),
   auditor: [
-    "# Auditor agent — checks risk budgets and plan adherence.",
-    "# Returns warnings/violations; never opens trades.",
-    "def audit(ctx):",
+    "# Auditor agent — analyses operativa, q-table and MT5 broker",
+    "# reports. Returns warnings/violations; never opens trades.",
+    "def evaluate(ctx):",
     '    """Return a list of violations (may be empty)."""',
     "    return []",
     "",
@@ -89,12 +121,19 @@ export const AGENT_TYPE_TEMPLATE: Record<AgentType, string> = {
 /**
  * Canonical entrypoint name per agent type. Matches the backend
  * ``_DEFAULT_ENTRYPOINTS`` map.
+ *
+ * Migration 0012 — the Investigador convention is renamed to
+ * ``analyze_news`` (news-only scope); legacy rows that still use
+ * ``investigate`` or ``analyze`` are accepted as a soft fallback.
+ * The Auditor convention is renamed to ``evaluate``.
  */
 export const AGENT_TYPE_DEFAULT_ENTRYPOINT: Record<AgentType, string> = {
   orchestrator: "orchestrate",
+  investigator: "analyze_news",
+  marker: "mark_signal",
   worker: "on_tick",
-  investigator: "investigate",
-  auditor: "audit",
+  tutor: "on_sleep",
+  auditor: "evaluate",
 };
 
 // ---------------------------------------------------------------------------

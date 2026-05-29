@@ -106,11 +106,26 @@ class Project(Base):
     base_logic: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # --- Vinculación a agentes
-    # Charter correction (migration 0010): the Orquestador is now a
-    # first-class FK like the other three (Worker / Investigador /
-    # Auditor). Existing rows keep ``orchestrator_agent_id = NULL``
-    # until the operator wires one in the dashboard.
+    # Charter corrections:
+    #   * Migration 0010 — the Orquestador is a first-class FK like
+    #     Worker / Investigador / Auditor. Existing rows keep
+    #     ``orchestrator_agent_id = NULL`` until the operator wires one.
+    #   * Migration 0012 — adds ``marker_agent_id`` (market-signal
+    #     agent, split from the prior Investigador role) and
+    #     ``tutor_agent_id`` (Sleep Phase conductor, split from the
+    #     Orquestador's responsibilities). Both default to NULL on
+    #     existing rows.
     orchestrator_agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("agents.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    investigator_agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("agents.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    marker_agent_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("agents.id", ondelete="RESTRICT"),
         nullable=True,
@@ -120,7 +135,7 @@ class Project(Base):
         ForeignKey("agents.id", ondelete="RESTRICT"),
         nullable=True,
     )
-    investigator_agent_id: Mapped[uuid.UUID | None] = mapped_column(
+    tutor_agent_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("agents.id", ondelete="RESTRICT"),
         nullable=True,
@@ -142,13 +157,19 @@ class Project(Base):
     orchestrator_params: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
-    auditor_params: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, nullable=False, server_default=text("'{}'::jsonb")
-    )
     investigator_params: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
+    marker_params: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
     worker_params: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    tutor_params: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    auditor_params: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
 
@@ -170,8 +191,16 @@ class Project(Base):
     orchestrator_agent = relationship(
         "Agent", foreign_keys=[orchestrator_agent_id], lazy="raise"
     )
+    investigator_agent = relationship(
+        "Agent", foreign_keys=[investigator_agent_id], lazy="raise"
+    )
+    marker_agent = relationship(
+        "Agent", foreign_keys=[marker_agent_id], lazy="raise"
+    )
     worker_agent = relationship("Agent", foreign_keys=[worker_agent_id], lazy="raise")
-    investigator_agent = relationship("Agent", foreign_keys=[investigator_agent_id], lazy="raise")
+    tutor_agent = relationship(
+        "Agent", foreign_keys=[tutor_agent_id], lazy="raise"
+    )
     auditor_agent = relationship("Agent", foreign_keys=[auditor_agent_id], lazy="raise")
 
     def __repr__(self) -> str:  # pragma: no cover

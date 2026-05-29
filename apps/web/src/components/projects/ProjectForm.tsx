@@ -79,8 +79,10 @@ function detailToFormValues(detail: ProjectDetail): ProjectCreateInput {
     strategy_description: detail.strategy_description ?? undefined,
     base_logic: detail.base_logic ?? undefined,
     orchestrator_agent_id: detail.orchestrator_agent_id ?? undefined,
-    worker_agent_id: detail.worker_agent_id ?? undefined,
     investigator_agent_id: detail.investigator_agent_id ?? undefined,
+    marker_agent_id: detail.marker_agent_id ?? undefined,
+    worker_agent_id: detail.worker_agent_id ?? undefined,
+    tutor_agent_id: detail.tutor_agent_id ?? undefined,
     auditor_agent_id: detail.auditor_agent_id ?? undefined,
     trading_sessions: detail.trading_sessions,
     tags: detail.tags ?? undefined,
@@ -101,8 +103,10 @@ const DEFAULT_VALUES: ProjectCreateInput = {
   max_total_dd: "8.0",
   max_exposure: "10.0",
   orchestrator_agent_id: undefined,
-  worker_agent_id: undefined,
   investigator_agent_id: undefined,
+  marker_agent_id: undefined,
+  worker_agent_id: undefined,
+  tutor_agent_id: undefined,
   auditor_agent_id: undefined,
 };
 
@@ -136,15 +140,19 @@ export function ProjectForm({
 
   // Track current agent selections so we can warn the operator if the
   // same agent.id is assigned to more than one slot (charter: one
-  // Orquestador / Worker / Investigador / Auditor per project — the
-  // backend doesn't enforce uniqueness across slots, so we flag it
-  // client-side).
+  // Orquestador / Investigador / Marker / Worker / Tutor / Auditor per
+  // project — the backend doesn't enforce uniqueness across slots, so
+  // we flag it client-side).
   const orchestratorAgentId =
     useWatch({ control, name: "orchestrator_agent_id" }) ?? "";
-  const workerAgentId =
-    useWatch({ control, name: "worker_agent_id" }) ?? "";
   const investigatorAgentId =
     useWatch({ control, name: "investigator_agent_id" }) ?? "";
+  const markerAgentId =
+    useWatch({ control, name: "marker_agent_id" }) ?? "";
+  const workerAgentId =
+    useWatch({ control, name: "worker_agent_id" }) ?? "";
+  const tutorAgentId =
+    useWatch({ control, name: "tutor_agent_id" }) ?? "";
   const auditorAgentId =
     useWatch({ control, name: "auditor_agent_id" }) ?? "";
 
@@ -161,8 +169,10 @@ export function ProjectForm({
     const normalized: ProjectCreateInput = {
       ...values,
       orchestrator_agent_id: values.orchestrator_agent_id || null,
-      worker_agent_id: values.worker_agent_id || null,
       investigator_agent_id: values.investigator_agent_id || null,
+      marker_agent_id: values.marker_agent_id || null,
+      worker_agent_id: values.worker_agent_id || null,
+      tutor_agent_id: values.tutor_agent_id || null,
       auditor_agent_id: values.auditor_agent_id || null,
     };
     await onSubmit(normalized);
@@ -533,21 +543,24 @@ export function ProjectForm({
           </Card>
         </TabsContent>
 
-        {/* AGENTES — four pickers (Orquestador / Investigador / Worker /
-            Auditor). Each loads its own type-filtered list from
-            /api/agents. Backend already filters by current_user.id so we
-            never see other tenants' agents.
+        {/* AGENTES — six pickers (Orquestador / Investigador / Marker /
+            Worker / Tutor / Auditor). Each loads its own type-filtered
+            list from /api/agents. Backend already filters by
+            current_user.id so we never see other tenants' agents.
 
             Order convention (mirrors the charter prose "supervisor →
-            research → execute → audit"): Orquestador → Investigador →
-            Worker → Auditor. */}
+            research news → market signal → execute → sleep/teach →
+            audit"): Orquestador → Investigador → Marker → Worker →
+            Tutor → Auditor. Migration 0012 added the Marker and Tutor
+            slots. */}
         <TabsContent value="agentes">
           <Card>
             <CardHeader>
               <CardTitle>Agentes</CardTitle>
               <CardDescription>
                 Cada proyecto puede vincular un agente de cada tipo
-                (Orquestador / Investigador / Worker / Auditor).
+                (Orquestador / Investigador / Marker / Worker / Tutor /
+                Auditor).
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
@@ -562,27 +575,43 @@ export function ProjectForm({
                 id="investigator_agent_id"
                 type="investigator"
                 label="Investigador"
-                description="Analiza mercado, eventos y noticias."
+                description="Lee y resume todas las noticias relevantes."
                 {...register("investigator_agent_id")}
+              />
+              <AgentSlotPicker
+                id="marker_agent_id"
+                type="marker"
+                label="Marker"
+                description="Da la señal del mercado y la opción a poner en marcha."
+                {...register("marker_agent_id")}
               />
               <AgentSlotPicker
                 id="worker_agent_id"
                 type="worker"
                 label="Worker"
-                description="Ejecuta la lógica de trading sobre velas/tick."
+                description="Ejecuta órdenes contra MT5 vía MCP."
                 {...register("worker_agent_id")}
+              />
+              <AgentSlotPicker
+                id="tutor_agent_id"
+                type="tutor"
+                label="Tutor"
+                description="Conduce la Fase de Sueño y orquesta el aprendizaje."
+                {...register("tutor_agent_id")}
               />
               <AgentSlotPicker
                 id="auditor_agent_id"
                 type="auditor"
                 label="Auditor"
-                description="Verifica riesgo, salud y desviaciones del plan."
+                description="Analiza la operativa, q-table y los informes de MT5."
                 {...register("auditor_agent_id")}
               />
               {duplicateAgentWarning(
                 orchestratorAgentId,
                 investigatorAgentId,
+                markerAgentId,
                 workerAgentId,
+                tutorAgentId,
                 auditorAgentId,
               ) && (
                 <p
@@ -592,7 +621,9 @@ export function ProjectForm({
                   {duplicateAgentWarning(
                     orchestratorAgentId,
                     investigatorAgentId,
+                    markerAgentId,
                     workerAgentId,
+                    tutorAgentId,
                     auditorAgentId,
                   )}
                 </p>
@@ -780,14 +811,16 @@ const AgentSlotPicker = React.forwardRef<
 
 /**
  * Returns a human warning string if the same agent.id has been bound to
- * two distinct slots (Orquestador / Investigador / Worker / Auditor).
- * Returns null otherwise. The backend doesn't enforce this — we only
- * nudge the UI.
+ * two distinct slots (Orquestador / Investigador / Marker / Worker /
+ * Tutor / Auditor). Returns null otherwise. The backend doesn't
+ * enforce this — we only nudge the UI.
  */
 function duplicateAgentWarning(
   orchestratorId: string,
   investigatorId: string,
+  markerId: string,
   workerId: string,
+  tutorId: string,
   auditorId: string,
 ): string | null {
   const labels: Record<string, string[]> = {};
@@ -798,7 +831,9 @@ function duplicateAgentWarning(
   };
   push(orchestratorId, "Orquestador");
   push(investigatorId, "Investigador");
+  push(markerId, "Marker");
   push(workerId, "Worker");
+  push(tutorId, "Tutor");
   push(auditorId, "Auditor");
   for (const slots of Object.values(labels)) {
     if (slots.length > 1) {

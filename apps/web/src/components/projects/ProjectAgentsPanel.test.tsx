@@ -58,14 +58,18 @@ const baseProject: ProjectDetail = {
   strategy_description: null,
   base_logic: null,
   orchestrator_agent_id: null,
-  worker_agent_id: null,
   investigator_agent_id: null,
+  marker_agent_id: null,
+  worker_agent_id: null,
+  tutor_agent_id: null,
   auditor_agent_id: null,
   trading_sessions: [],
   orchestrator_params: {},
-  auditor_params: {},
   investigator_params: {},
+  marker_params: {},
   worker_params: {},
+  tutor_params: {},
+  auditor_params: {},
   tags: null,
   notes: null,
   error_count: 0,
@@ -78,7 +82,7 @@ describe("ProjectAgentsPanel", () => {
     (listAgents as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   });
 
-  it("renders the four slot rows", () => {
+  it("renders the six slot rows (migration 0012 added Marker + Tutor)", () => {
     render(
       <ProjectAgentsPanel
         project={baseProject}
@@ -93,7 +97,13 @@ describe("ProjectAgentsPanel", () => {
       screen.getByTestId("project-agents-row-investigator"),
     ).toBeInTheDocument();
     expect(
+      screen.getByTestId("project-agents-row-marker"),
+    ).toBeInTheDocument();
+    expect(
       screen.getByTestId("project-agents-row-worker"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("project-agents-row-tutor"),
     ).toBeInTheDocument();
     expect(
       screen.getByTestId("project-agents-row-auditor"),
@@ -109,11 +119,12 @@ describe("ProjectAgentsPanel", () => {
     );
 
     const noneCount = screen.getAllByText(/no asignado/i);
-    // One for each slot (Orquestador / Investigador / Worker / Auditor).
-    expect(noneCount.length).toBe(4);
+    // One for each of the six slots (Orquestador / Investigador /
+    // Marker / Worker / Tutor / Auditor).
+    expect(noneCount.length).toBe(6);
   });
 
-  it("opens the dialog with an Orquestador picker when the edit button is clicked", async () => {
+  it("opens the dialog with all six pickers when the edit button is clicked", async () => {
     render(
       <ProjectAgentsPanel
         project={baseProject}
@@ -129,15 +140,30 @@ describe("ProjectAgentsPanel", () => {
         screen.getByText(/editar asignaciones de agentes/i),
       ).toBeInTheDocument();
     });
-    // listAgents should be called four times (one per type) when the
-    // dialog opens — including the Orquestador slot added in
-    // migration 0010.
+    // listAgents must be called six times (one per type) when the
+    // dialog opens — Orquestador (0010), Marker + Tutor (0012),
+    // plus Investigador / Worker / Auditor.
     await waitFor(() => {
-      expect(listAgents).toHaveBeenCalledTimes(4);
+      expect(listAgents).toHaveBeenCalledTimes(6);
     });
-    // The Orquestador picker must be present in the dialog.
+    // The six pickers must all be present.
     expect(
       screen.getByTestId("dlg-orchestrator-agent-select"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("dlg-investigator-agent-select"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("dlg-marker-agent-select"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("dlg-worker-agent-select"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("dlg-tutor-agent-select"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("dlg-auditor-agent-select"),
     ).toBeInTheDocument();
   });
 });

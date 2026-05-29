@@ -42,29 +42,55 @@ Reglas duras:
 - **No CSS-in-JS** (styled-components, Emotion runtime, etc.). El estilado vive en Tailwind v4 + CSS variables del tema. Aceptable: CSS Modules puntuales si Tailwind no cubre el caso.
 
 ### Estructura del Sistema
-Existen 4 agentes especializados:
+La topología actual es **1 Orquestador + 5 agentes especializados** (corrección 0012; ver "Evolución del charter" al final de esta sección).
 
-1. **Agente Orquestador** (tú): 
+1. **Agente Orquestador** (tú):
    - Eres el supervisor máximo. Tomas decisiones finales.
    - Descompones objetivos, asignas tareas, gestionas prioridades y resuelves conflictos.
    - Aplicas siempre reglas estrictas de gestión de riesgo.
 
-2. **Agente Investigador**:
-   - Analiza el mercado actual (técnico, fundamental, sentiment, noticias, correlaciones).
-   - Proporciona contexto rico y actualizado al Worker y al Orquestador.
+2. **Agente Investigador** *(noticias)*:
+   - Encargado de mirar **TODAS LAS NOTICIAS** relevantes para el proyecto.
+   - Lee y resume fuentes (técnico-noticioso, fundamental, sentiment, agendas macro) y produce un brief que consumen el Marker, el Worker y el Orquestador.
+   - **Nota de migración 0012**: este rol estaba antes mezclado con "emitir señal de mercado" — esa parte se separa al Marker. El Investigador queda re-scopeado a noticias.
 
-3. **Agente Worker (Ejecutor)**:
-   - Ejecuta la lógica de trading definida para el proyecto.
-   - Analiza las señales del Investigador.
+3. **Agente Marker** *(señal de mercado)*:
+   - Da la señal de cómo está el mercado y **qué opción se tiene que poner en marcha** (régimen, sesgo, modo del Worker).
+   - Es el rol que antes tenía el Investigador; ahora vive como agente propio para que la salida sea auditable y versionable independiente de las noticias.
+
+4. **Agente Worker (Ejecutor)**:
+   - Ejecuta la lógica de trading definida para el proyecto, comportándose como un bot.
+   - Consume el brief del Investigador y la señal del Marker.
    - Decide y envía órdenes reales a MT5 vía MCP (compra, venta, SL, TP, trailing, cierre, etc.).
    - Puede modificar parámetros de la estrategia dentro de límites seguros.
 
-4. **Agente Auditor**:
+5. **Agente Tutor** *(Fase de Sueño)*:
+   - Encargado del **sueño** (ver sección "Fases del Sueño").
+   - Conduce los ciclos de Micro / Profundo / Crítico: dispara reflexiones, agrega evidencia y propone mejoras a la lógica de los demás agentes.
+   - Antes esto era responsabilidad del Orquestador; ahora el Tutor lo orquesta y el Orquestador supervisa y aplica los cambios derivados.
+
+6. **Agente Auditor**:
    - Recopila en tiempo real y al final de sesión todos los datos e informes de MT5 vía MCP.
    - Calcula métricas: Profit Factor, Sharpe, Max Drawdown, Win Rate, R:R, exposición, etc.
-   - Detecta anomalías y errores.
-   - Propone mejoras leves (parámetros, temporalidad, filtros, horarios).
+   - **Scope ampliado (migración 0012)**: además de riesgo/umbrales, analiza la **q-table** completa y los **informes del broker MT5** para detectar deriva entre la política aprendida y la operativa real.
+   - Detecta anomalías y errores. Propone mejoras leves (parámetros, temporalidad, filtros, horarios).
    - Si detecta problemas graves, puede proponer o ejecutar parada de emergencia.
+
+**Convenciones de `entrypoint` por tipo** (lock estricto; ver `_DEFAULT_ENTRYPOINTS` en `apps/api/src/aether_api/routers/agents.py`):
+
+| Tipo            | Entrypoint canónico   | Notas                                                                                          |
+|-----------------|-----------------------|------------------------------------------------------------------------------------------------|
+| `orchestrator`  | `orchestrate(ctx)`    | Sin cambios.                                                                                   |
+| `investigator`  | `analyze_news(ctx)`   | Renombrado en 0012 para reflejar el scope news-only. `analyze(ctx)` se mantiene como fallback documentado para filas heredadas. |
+| `marker`        | `mark_signal(ctx)`    | Nuevo en 0012.                                                                                 |
+| `worker`        | `on_tick(ctx)`        | Sin cambios.                                                                                   |
+| `tutor`         | `on_sleep(ctx)`       | Nuevo en 0012.                                                                                 |
+| `auditor`       | `evaluate(ctx)`       | Sin cambios de firma; scope expandido a q-table + informes MT5.                                |
+
+**Evolución del charter**:
+- La versión inicial (`0001_init`) modelaba 4 agentes (Orquestador como rol implícito del backend + Worker + Investigador + Auditor).
+- La migración `0010_orchestrator_agent` corrigió el modelo de datos: el Orquestador pasó a ser una fila de `agents` como las demás.
+- La migración `0012_marker_and_tutor_agents` corrige el reparto de responsabilidades: separa **Investigador (noticias)** de **Marker (señal de mercado)** y crea **Tutor** como dueño de la Fase de Sueño. Las filas existentes con `type='investigator'` mantienen ese valor; el operador puede re-etiquetar manualmente si una fila concreta debe pasar a significar "marker".
 
 ### Reglas Generales Obligatorias (Nunca las violes)
 
@@ -94,18 +120,21 @@ El sistema debe entrar periódicamente en "Fase de Sueño":
 - Sueño Crítico: activado automáticamente por el Auditor ante problemas graves.
 
 **Durante la Fase de Sueño se debe:**
-1. El Auditor analiza todos los trades realizados.
-2. El Investigador busca patrones de fallo y oportunidades.
-3. El Worker reflexiona sobre sus decisiones.
-4. Tú (Orquestador) sintetizas todo y decides:
+1. El Auditor analiza todos los trades realizados, la q-table y los informes del broker MT5.
+2. El Investigador (post-0012, news-only) revisa el corpus de noticias del periodo y resalta patrones de fallo / oportunidades.
+3. El Marker reevalúa la señal de mercado pasada a la luz de lo que de verdad ocurrió.
+4. El Worker reflexiona sobre sus decisiones.
+5. Tú (Orquestador) sintetizas todo — apoyado por el Tutor — y decides:
    - Ajustes de parámetros.
    - Cambios de temporalidad.
    - Nuevas reglas o restricciones.
    - Actualización de prompts internos (si es necesario).
-5. Guardar todo en memoria a largo plazo.
-6. Versionar la configuración (para poder revertir si es necesario).
+6. Guardar todo en memoria a largo plazo.
+7. Versionar la configuración (para poder revertir si es necesario).
 
 Al terminar el sueño, se aplica las mejoras (las leves automáticamente, las importantes con confirmación humana) y se despierta el sistema.
+
+**Tutor — dueño de la Fase de Sueño (migración 0012):** el Tutor es ahora el agente responsable de coordinar la Fase de Sueño (Micro / Profundo / Crítico). El Orquestador supervisa y aplica las propuestas derivadas, pero la mecánica del aprendizaje (qué reflejar, en qué orden, con qué evidencia) vive en el Tutor. La transacción atómica de promoción (Q-Table + `sleep_reports` + `config_versions`) sigue siendo competencia exclusiva del Orquestador — *no* del Tutor — por motivos de invariante de single-writer descrito en `CLAUDE.md` (Sleep Phase).
 
 ### Multiusuario, Autenticación y Seguridad
 
@@ -269,12 +298,17 @@ CREATE TABLE projects (
     base_logic          TEXT,                             -- Resumen humano de la estrategia. El código ejecutable vive en agents.logica.
 
     -- Vinculación a agentes (definiciones reutilizables; ver tabla agents).
-    -- Corrección de charter (migración 0010): el Orquestador ES un
-    -- agente definible como los otros tres. Cada proyecto vincula
-    -- cuatro agentes — Orquestador + Investigador + Worker + Auditor.
+    -- Correcciones de charter:
+    --   * 0010 — el Orquestador ES un agente definible.
+    --   * 0012 — se añaden Marker (señal de mercado) y Tutor (Fase
+    --     de Sueño) como slots de primera clase. Cada proyecto puede
+    --     vincular seis agentes — Orquestador + Investigador + Marker
+    --     + Worker + Tutor + Auditor.
     orchestrator_agent_id  UUID REFERENCES agents(id) ON DELETE RESTRICT,
-    worker_agent_id        UUID REFERENCES agents(id) ON DELETE RESTRICT,
     investigator_agent_id  UUID REFERENCES agents(id) ON DELETE RESTRICT,
+    marker_agent_id        UUID REFERENCES agents(id) ON DELETE RESTRICT,
+    worker_agent_id        UUID REFERENCES agents(id) ON DELETE RESTRICT,
+    tutor_agent_id         UUID REFERENCES agents(id) ON DELETE RESTRICT,
     auditor_agent_id       UUID REFERENCES agents(id) ON DELETE RESTRICT,
 
     -- Ventanas operativas: sesiones de mercado donde el Worker tiene permiso para operar.
@@ -284,9 +318,11 @@ CREATE TABLE projects (
 
     -- Parámetros por agente (JSONB; estructura libre, evoluciona sin migraciones)
     orchestrator_params  JSONB NOT NULL DEFAULT '{}'::jsonb,
-    auditor_params       JSONB NOT NULL DEFAULT '{}'::jsonb,
     investigator_params  JSONB NOT NULL DEFAULT '{}'::jsonb,
+    marker_params        JSONB NOT NULL DEFAULT '{}'::jsonb,
     worker_params        JSONB NOT NULL DEFAULT '{}'::jsonb,
+    tutor_params         JSONB NOT NULL DEFAULT '{}'::jsonb,
+    auditor_params       JSONB NOT NULL DEFAULT '{}'::jsonb,
 
     -- Fechas y control
     created_at          TIMESTAMP DEFAULT NOW(),
@@ -310,9 +346,9 @@ Notas de uso:
 - `mcp_url` + `mcp_port` identifican el endpoint MCP del contenedor MT5 de ese proyecto.
 - `account_credential_ref` es **siempre** una referencia a un secret store externo (vault, env var, etc.). **Nunca** guardar contraseñas de broker en plaintext en esta tabla.
 - `commission_per_lot`, `swap_*`, `spread_typical` son inputs para el cálculo de R:R real y para que el Auditor compute métricas netas de coste. Si el broker no expone alguno, dejar `NULL` y que los agentes lo traten como "desconocido", no como cero.
-- `orchestrator_params`, `auditor_params`, `investigator_params`, `worker_params` son JSONB libres. Cada agente define su propio esquema interno y lo valida en arranque. Para versionar configuraciones de agente a lo largo del tiempo (Fase de Sueño), usar `strategy_version` como ancla o, si el historial por agente se vuelve denso, mover a una tabla `project_agent_configs` aparte.
+- `orchestrator_params`, `investigator_params`, `marker_params`, `worker_params`, `tutor_params`, `auditor_params` son JSONB libres (seis bloques, uno por slot). Cada agente define su propio esquema interno y lo valida en arranque. Para versionar configuraciones de agente a lo largo del tiempo (Fase de Sueño), usar `strategy_version` como ancla o, si el historial por agente se vuelve denso, mover a una tabla `project_agent_configs` aparte.
 - `trading_sessions` declara las **sesiones de mercado** en las que el Worker está autorizado a abrir/gestionar posiciones. Valores canónicos: `sydney` (Australia), `shanghai` (China), `tokyo` (Japón), `europe` (Londres/Frankfurt), `new_york` (NY). El array puede ser vacío (proyecto sin sesiones definidas → el Worker no opera) o contener varias. Los **horarios concretos** de cada sesión (con awareness de DST: EEUU y Europa sí, Shanghai no) viven en el backend como tabla de referencia/constantes — no en `projects`. El Auditor debe rechazar/alertar cualquier orden ejecutada fuera de la unión de las sesiones declaradas.
-- `orchestrator_agent_id`, `worker_agent_id`, `investigator_agent_id`, `auditor_agent_id` apuntan a la **definición del agente** que el proyecto usa (ver tabla `agents`). Son **reutilizables**: el mismo `agents.id` puede estar referenciado por varios proyectos. La parametrización específica del proyecto va en los JSONB de arriba (`orchestrator_params`, `worker_params`, etc.). **Corrección de charter (migración 0010)**: el Orquestador SÍ se modela en BD como agente definible — antes se pensaba que era sólo el plano de control del backend, esa interpretación era errónea. Cada proyecto vincula cuatro agentes: Orquestador + Investigador + Worker + Auditor. Las filas existentes mantienen `orchestrator_agent_id = NULL` hasta que el operador asigne uno.
+- `orchestrator_agent_id`, `investigator_agent_id`, `marker_agent_id`, `worker_agent_id`, `tutor_agent_id`, `auditor_agent_id` apuntan a la **definición del agente** que el proyecto usa (ver tabla `agents`). Son **reutilizables**: el mismo `agents.id` puede estar referenciado por varios proyectos. La parametrización específica del proyecto va en los JSONB de arriba (`orchestrator_params`, `marker_params`, etc.). **Correcciones de charter**: 0010 promovió el Orquestador a agente definible; 0012 separó **Investigador (noticias)** de **Marker (señal de mercado)** y creó **Tutor** para la Fase de Sueño. Cada proyecto vincula hasta seis agentes: Orquestador + Investigador + Marker + Worker + Tutor + Auditor. Las filas existentes mantienen los IDs nuevos a `NULL` hasta que el operador los asigne; las filas de `agents` con `type='investigator'` no se mutan automáticamente — el operador re-etiqueta a `marker` si la semántica de esa fila ya no es "noticias".
 
 ### Modelo de Datos: tabla `agents`
 
@@ -342,15 +378,15 @@ CREATE TABLE agents (
     updated_at      TIMESTAMP DEFAULT NOW(),
 
     -- Constraints
-    CONSTRAINT agents_type_valid    CHECK (type IN ('orchestrator', 'worker', 'investigator', 'auditor')),
+    CONSTRAINT agents_type_valid    CHECK (type IN ('orchestrator', 'investigator', 'marker', 'worker', 'tutor', 'auditor')),
     CONSTRAINT agents_runtime_only_python CHECK (runtime = 'python')
 );
 ```
 
 Notas de uso:
-- **El campo `logica` es la pieza central**: contiene el código Python que define el comportamiento del agente. Para el Worker es la lógica de trading (señales → órdenes vía MCP). Para el Investigador es la lógica de análisis de mercado. Para el Auditor es la lógica de evaluación de métricas/anomalías. **Sin MQL5 jamás** — `runtime` está constrained a `'python'` por DB. El sistema no genera EAs.
-- **`type` incluye `orchestrator`** (corrección de charter, migración 0010): el Orquestador es un agente definible como los otros tres, no sólo el plano de control del backend. La sección "Agentes" del sidebar es CRUD-able para los cuatro tipos. *Nota: esta es una corrección. La redacción anterior decía que el Orquestador NO era un agente definible — esa interpretación era errónea.*
-- **`entrypoint`**: nombre de la función Python que el runtime invoca. Convención por `type` (Orquestador = `orchestrate(ctx)`, Investigador = `investigate(ctx)`, Worker = `on_tick(ctx)`, Auditor = `audit(ctx)`). El contrato exacto lo define el backend en su propio módulo.
+- **El campo `logica` es la pieza central**: contiene el código Python que define el comportamiento del agente. Para el Worker es la lógica de trading (señales → órdenes vía MCP). Para el Investigador es la lógica de lectura/resumen de noticias (post-0012). Para el Marker es la generación de señal de mercado. Para el Tutor es la coordinación de la Fase de Sueño. Para el Auditor es la lógica de evaluación de métricas/anomalías + q-table + informes MT5. **Sin MQL5 jamás** — `runtime` está constrained a `'python'` por DB. El sistema no genera EAs.
+- **`type` admite seis valores** (corrección de charter, migraciones 0010 y 0012): `orchestrator | investigator | marker | worker | tutor | auditor`. La sección "Agentes" del sidebar es CRUD-able para los seis tipos. *Nota histórica: la redacción inicial decía que el Orquestador NO era un agente definible — corrección 0010. La redacción post-0010 mezclaba "noticias" y "señal" en el Investigador y dejaba el sueño en el Orquestador — corrección 0012.*
+- **`entrypoint`**: nombre de la función Python que el runtime invoca. Convención por `type` (Orquestador = `orchestrate(ctx)`, Investigador = `analyze_news(ctx)`, Marker = `mark_signal(ctx)`, Worker = `on_tick(ctx)`, Tutor = `on_sleep(ctx)`, Auditor = `evaluate(ctx)`). `analyze(ctx)` se mantiene como **soft fallback documentado** para filas de Investigador heredadas que aún exportan ese nombre. El contrato exacto lo define el backend en su propio módulo.
 - **Reutilización**: un mismo `agents.id` puede ser referenciado por múltiples `projects`. La especialización por proyecto se hace vía `projects.{worker|investigator|auditor}_params` (JSONB). La `logica` lee esos params del contexto que le pasa el backend, no del DB directamente.
 - **Versionado**: `version` se incrementa en cada update. Para historial detallado (necesario en Fase de Sueño cuando el Orquestador modifica `logica`), promover a una tabla `agent_versions` aparte. No embeber historial en el propio row.
 - **Archivado, no borrado**: `ON DELETE RESTRICT` desde `projects` impide eliminar un agente referenciado. Para "borrar" se marca `is_active = false`.

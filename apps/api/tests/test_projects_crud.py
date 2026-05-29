@@ -647,3 +647,179 @@ async def test_cross_tenant_orchestrator_id_returns_404_on_get(app_client):
 
     resp = await app_client.get(f"/api/projects/{a_project['id']}")
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Marker + Tutor agent slots — added in migration 0012 (charter correction).
+# ---------------------------------------------------------------------------
+async def _seed_typed_agent_for_user(
+    email: str,
+    *,
+    type_: str,
+    name: str,
+    entrypoint_def: str,
+) -> str:
+    """Seed an agent of an arbitrary ``type_`` owned by ``email``."""
+    from aether_api.db.session import get_session_maker
+
+    from tests._helpers import seed_agent
+    from sqlalchemy import select
+    from aether_api.models.user import User
+
+    maker = get_session_maker()
+    async with maker() as session:
+        owner = (
+            await session.execute(select(User).where(User.email == email.lower()))
+        ).scalar_one()
+        agent = await seed_agent(
+            session,
+            owner=owner,
+            name=name,
+            type=type_,
+            logica=entrypoint_def,
+        )
+        await session.commit()
+        return str(agent.id)
+
+
+async def test_create_project_with_marker_and_tutor_agent_ids(app_client):
+    """POST /api/projects accepts the new ``marker_agent_id`` and
+    ``tutor_agent_id`` slots (migration 0012) and persists them."""
+    await _seed_user_and_login(app_client, email="mk-tu@example.com")
+    marker_id = await _seed_typed_agent_for_user(
+        "mk-tu@example.com",
+        type_="marker",
+        name="mk-1",
+        entrypoint_def="def mark_signal(ctx):\n    return None\n",
+    )
+    tutor_id = await _seed_typed_agent_for_user(
+        "mk-tu@example.com",
+        type_="tutor",
+        name="tu-1",
+        entrypoint_def="def on_sleep(ctx):\n    return None\n",
+    )
+
+    resp = await app_client.post(
+        "/api/projects",
+        json=_project_payload(
+            marker_agent_id=marker_id, tutor_agent_id=tutor_id
+        ),
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["marker_agent_id"] == marker_id
+    assert body["tutor_agent_id"] == tutor_id
+    # Matching JSONB params default to {} server-side.
+    assert body["marker_params"] == {}
+    assert body["tutor_params"] == {}
+
+
+async def test_patch_project_swaps_marker(app_client):
+    """PATCH /api/projects/{id} can change the bound Marker in place."""
+    await _seed_user_and_login(app_client, email="mk-swap@example.com")
+    marker_one = await _seed_typed_agent_for_user(
+        "mk-swap@example.com",
+        type_="marker",
+        name="mk-one",
+        entrypoint_def="def mark_signal(ctx):\n    return None\n",
+    )
+    marker_two = await _seed_typed_agent_for_user(
+        "mk-swap@example.com",
+        type_="marker",
+        name="mk-two",
+        entrypoint_def="def mark_signal(ctx):\n    return None\n",
+    )
+    created = await _create_project(app_client, marker_agent_id=marker_one)
+    assert created["marker_agent_id"] == marker_one
+
+    resp = await app_client.patch(
+        f"/api/projects/{created['id']}",
+        json={"marker_agent_id": marker_two},
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["marker_agent_id"] == marker_two
+
+
+async def test_patch_project_swaps_tutor(app_client):
+    """PATCH /api/projects/{id} can change the bound Tutor in place."""
+    await _seed_user_and_login(app_client, email="tu-swap@example.com")
+    tutor_one = await _seed_typed_agent_for_user(
+        "tu-swap@example.com",
+        type_="tutor",
+        name="tu-one",
+        entrypoint_def="def on_sleep(ctx):\n    return None\n",
+    )
+    tutor_two = await _seed_typed_agent_for_user(
+        "tu-swap@example.com",
+        type_="tutor",
+        name="tu-two",
+        entrypoint_def="def on_sleep(ctx):\n    return None\n",
+    )
+    created = await _create_project(app_client, tutor_agent_id=tutor_one)
+    assert created["tutor_agent_id"] == tutor_one
+
+    resp = await app_client.patch(
+        f"/api/projects/{created['id']}",
+        json={"tutor_agent_id": tutor_two},
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["tutor_agent_id"] == tutor_two
+
+
+async def test_patch_project_updates_marker_params(app_client):
+    """``marker_params`` JSONB is patchable like the other params blocks."""
+    await _seed_user_and_login(app_client, email="mk-prm@example.com")
+    created = await _create_project(app_client)
+    resp = await app_client.patch(
+        f"/api/projects/{created['id']}",
+        json={"marker_params": {"min_confidence": 0.7, "regimes": ["trend"]}},
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["marker_params"] == {
+        "min_confidence": 0.7,
+        "regimes": ["trend"],
+    }
+
+
+async def test_patch_project_updates_tutor_params(app_client):
+    """``tutor_params`` JSONB is patchable like the other params blocks."""
+    await _seed_user_and_login(app_client, email="tu-prm@example.com")
+    created = await _create_project(app_client)
+    resp = await app_client.patch(
+        f"/api/projects/{created['id']}",
+        json={"tutor_params": {"sleep_kind": "deep", "max_episodes": 500}},
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["tutor_params"] == {
+        "sleep_kind": "deep",
+        "max_episodes": 500,
+    }
+
+
+async def test_cross_tenant_marker_id_returns_404_on_get(app_client):
+    """Tenant A creates a Marker and a project that wires it.
+    Tenant B fetches the project by id → 404 (no existence leak)."""
+    await _seed_user_and_login(app_client, email="mk-a@example.com")
+    marker_id = await _seed_typed_agent_for_user(
+        "mk-a@example.com",
+        type_="marker",
+        name="mk-a-1",
+        entrypoint_def="def mark_signal(ctx):\n    return None\n",
+    )
+    a_project = await _create_project(
+        app_client, marker_agent_id=marker_id
+    )
+
+    # Swap to tenant B.
+    app_client.cookies.clear()
+    await _seed_user_and_login(app_client, email="mk-b@example.com")
+
+    resp = await app_client.get(f"/api/projects/{a_project['id']}")
+    assert resp.status_code == 404

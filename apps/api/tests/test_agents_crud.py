@@ -504,3 +504,166 @@ async def test_delete_orchestrator_returns_409_when_referenced(app_client) -> No
     detail = resp.json()["detail"]
     assert detail["code"] == "agent_referenced"
     assert project_id in detail["project_ids"]
+
+
+# ---------------------------------------------------------------------------
+# Marker + Tutor — added in migration 0012 (charter correction).
+# ---------------------------------------------------------------------------
+
+
+async def test_post_marker_type_succeeds(app_client) -> None:
+    """Migration 0012: ``marker`` is a valid agent type with its own
+    canonical entrypoint ``mark_signal(ctx)``."""
+    await _seed_and_login(app_client)
+    resp = await app_client.post(
+        "/api/agents",
+        json={
+            "name": "regime-detector",
+            "type": "marker",
+            "logica": "def mark_signal(ctx):\n    return None\n",
+            "entrypoint": "mark_signal",
+        },
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["type"] == "marker"
+    assert body["entrypoint"] == "mark_signal"
+
+
+async def test_post_tutor_type_succeeds(app_client) -> None:
+    """Migration 0012: ``tutor`` is a valid agent type with its own
+    canonical entrypoint ``on_sleep(ctx)``."""
+    await _seed_and_login(app_client)
+    resp = await app_client.post(
+        "/api/agents",
+        json={
+            "name": "sleep-coach",
+            "type": "tutor",
+            "logica": "def on_sleep(ctx):\n    return None\n",
+            "entrypoint": "on_sleep",
+        },
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["type"] == "tutor"
+    assert body["entrypoint"] == "on_sleep"
+
+
+async def test_list_filters_by_marker_type(app_client) -> None:
+    """``?type=marker`` must be a legal filter value (migration 0012)."""
+    await _seed_and_login(app_client)
+    await app_client.post(
+        "/api/agents",
+        json={
+            "name": "m1",
+            "type": "marker",
+            "logica": "def mark_signal(ctx):\n    return None\n",
+        },
+        headers=_csrf_headers(app_client),
+    )
+    resp = await app_client.get("/api/agents?type=marker")
+    assert resp.status_code == 200
+    rows = resp.json()
+    assert len(rows) == 1
+    assert rows[0]["type"] == "marker"
+
+
+async def test_list_filters_by_tutor_type(app_client) -> None:
+    """``?type=tutor`` must be a legal filter value (migration 0012)."""
+    await _seed_and_login(app_client)
+    await app_client.post(
+        "/api/agents",
+        json={
+            "name": "t1",
+            "type": "tutor",
+            "logica": "def on_sleep(ctx):\n    return None\n",
+        },
+        headers=_csrf_headers(app_client),
+    )
+    resp = await app_client.get("/api/agents?type=tutor")
+    assert resp.status_code == 200
+    rows = resp.json()
+    assert len(rows) == 1
+    assert rows[0]["type"] == "tutor"
+
+
+async def test_delete_marker_returns_409_when_referenced(app_client) -> None:
+    """A Marker agent referenced by ``projects.marker_agent_id`` must
+    surface 409 the same as every other slot (migration 0012)."""
+    from aether_api.db.session import get_session_maker
+
+    from tests._helpers import seed_agent, seed_project, seed_user
+
+    maker = get_session_maker()
+    async with maker() as session:
+        owner = await seed_user(
+            session,
+            email="mk-ref@example.com",
+            password="testtesttesttest",
+        )
+        agent = await seed_agent(
+            session,
+            owner=owner,
+            name="mk-ref",
+            type="marker",
+            logica="def mark_signal(ctx):\n    return None\n",
+        )
+        project = await seed_project(session, owner=owner, name="mk-ref-proj")
+        project.marker_agent_id = agent.id
+        await session.commit()
+        agent_id = str(agent.id)
+        project_id = str(project.id)
+
+    await app_client.post(
+        "/api/auth/login",
+        json={"email": "mk-ref@example.com", "password": "testtesttesttest"},
+    )
+    resp = await app_client.delete(
+        f"/api/agents/{agent_id}", headers=_csrf_headers(app_client)
+    )
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert detail["code"] == "agent_referenced"
+    assert project_id in detail["project_ids"]
+
+
+async def test_delete_tutor_returns_409_when_referenced(app_client) -> None:
+    """A Tutor agent referenced by ``projects.tutor_agent_id`` must
+    surface 409 the same as every other slot (migration 0012)."""
+    from aether_api.db.session import get_session_maker
+
+    from tests._helpers import seed_agent, seed_project, seed_user
+
+    maker = get_session_maker()
+    async with maker() as session:
+        owner = await seed_user(
+            session,
+            email="tu-ref@example.com",
+            password="testtesttesttest",
+        )
+        agent = await seed_agent(
+            session,
+            owner=owner,
+            name="tu-ref",
+            type="tutor",
+            logica="def on_sleep(ctx):\n    return None\n",
+        )
+        project = await seed_project(session, owner=owner, name="tu-ref-proj")
+        project.tutor_agent_id = agent.id
+        await session.commit()
+        agent_id = str(agent.id)
+        project_id = str(project.id)
+
+    await app_client.post(
+        "/api/auth/login",
+        json={"email": "tu-ref@example.com", "password": "testtesttesttest"},
+    )
+    resp = await app_client.delete(
+        f"/api/agents/{agent_id}", headers=_csrf_headers(app_client)
+    )
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert detail["code"] == "agent_referenced"
+    assert project_id in detail["project_ids"]

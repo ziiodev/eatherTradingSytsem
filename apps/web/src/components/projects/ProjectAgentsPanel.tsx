@@ -2,7 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Bot, Crown, Pencil, Search, Shield } from "lucide-react";
+import {
+  Bot,
+  Crown,
+  GraduationCap,
+  Pencil,
+  Search,
+  Shield,
+  Target,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { ApiError } from "@/lib/api";
@@ -30,13 +38,18 @@ import {
 
 /**
  * ProjectAgentsPanel — visible on the project detail page. Renders the
- * four slot bindings (Orquestador / Investigador / Worker / Auditor) and
- * a "Cambiar" action that opens a Dialog with four native selects to
- * update them.
+ * six slot bindings (Orquestador / Investigador / Marker / Worker /
+ * Tutor / Auditor) and a "Cambiar" action that opens a Dialog with six
+ * native selects to update them.
  *
- * Charter correction (migration 0010): the Orquestador is a first-class
- * agent slot like the other three. Order convention mirrors the charter
- * prose "supervisor → research → execute → audit".
+ * Charter corrections:
+ *   * Migration 0010 — the Orquestador is a first-class agent slot
+ *     like the others.
+ *   * Migration 0012 — added Marker (market-signal) and Tutor (Sleep
+ *     Phase) as first-class slots.
+ *
+ * Order convention mirrors the charter prose "supervisor → research
+ * news → market signal → execute → sleep/teach → audit".
  *
  * Multi-tenancy: the backend filters /api/agents by current_user.id, so
  * the picker never sees other tenants' rows. We do NOT layer a client
@@ -55,8 +68,10 @@ export interface ProjectAgentsPanelProps {
 interface SlotConfig {
   key:
     | "orchestrator_agent_id"
-    | "worker_agent_id"
     | "investigator_agent_id"
+    | "marker_agent_id"
+    | "worker_agent_id"
+    | "tutor_agent_id"
     | "auditor_agent_id";
   type: AgentType;
   label: string;
@@ -64,6 +79,9 @@ interface SlotConfig {
   icon: React.ComponentType<{ className?: string }>;
 }
 
+// Icon choices (migration 0012):
+//   * Marker → Target — bullseye = "give the signal".
+//   * Tutor  → GraduationCap — teaching/learning, the Sleep Phase role.
 const SLOTS: ReadonlyArray<SlotConfig> = [
   {
     key: "orchestrator_agent_id",
@@ -76,8 +94,15 @@ const SLOTS: ReadonlyArray<SlotConfig> = [
     key: "investigator_agent_id",
     type: "investigator",
     label: "Investigador",
-    description: "Analiza mercado y emite señales.",
+    description: "Lee y resume todas las noticias relevantes.",
     icon: Search,
+  },
+  {
+    key: "marker_agent_id",
+    type: "marker",
+    label: "Marker",
+    description: "Da la señal del mercado y la opción a poner en marcha.",
+    icon: Target,
   },
   {
     key: "worker_agent_id",
@@ -87,10 +112,17 @@ const SLOTS: ReadonlyArray<SlotConfig> = [
     icon: Bot,
   },
   {
+    key: "tutor_agent_id",
+    type: "tutor",
+    label: "Tutor",
+    description: "Conduce la Fase de Sueño y orquesta el aprendizaje.",
+    icon: GraduationCap,
+  },
+  {
     key: "auditor_agent_id",
     type: "auditor",
     label: "Auditor",
-    description: "Supervisa riesgo y umbrales.",
+    description: "Analiza la operativa, q-table y los informes de MT5.",
     icon: Shield,
   },
 ];
@@ -113,8 +145,10 @@ export function ProjectAgentsPanel({
     const load = async (): Promise<void> => {
       const ids = [
         project.orchestrator_agent_id,
-        project.worker_agent_id,
         project.investigator_agent_id,
+        project.marker_agent_id,
+        project.worker_agent_id,
+        project.tutor_agent_id,
         project.auditor_agent_id,
       ].filter((x): x is string => Boolean(x));
       if (ids.length === 0) {
@@ -125,8 +159,10 @@ export function ProjectAgentsPanel({
       // merge. One fetch per type that's referenced.
       const types = new Set<AgentType>();
       if (project.orchestrator_agent_id) types.add("orchestrator");
-      if (project.worker_agent_id) types.add("worker");
       if (project.investigator_agent_id) types.add("investigator");
+      if (project.marker_agent_id) types.add("marker");
+      if (project.worker_agent_id) types.add("worker");
+      if (project.tutor_agent_id) types.add("tutor");
       if (project.auditor_agent_id) types.add("auditor");
       try {
         const lists = await Promise.all(
@@ -151,8 +187,10 @@ export function ProjectAgentsPanel({
     };
   }, [
     project.orchestrator_agent_id,
-    project.worker_agent_id,
     project.investigator_agent_id,
+    project.marker_agent_id,
+    project.worker_agent_id,
+    project.tutor_agent_id,
     project.auditor_agent_id,
   ]);
 
@@ -166,7 +204,8 @@ export function ProjectAgentsPanel({
           <h2 className="text-base font-semibold tracking-tight">Agentes</h2>
           <p className="text-xs text-[rgb(var(--foreground-muted))]">
             Vínculos del proyecto a las definiciones de agente
-            (Orquestador / Investigador / Worker / Auditor).
+            (Orquestador / Investigador / Marker / Worker / Tutor /
+            Auditor).
           </p>
         </div>
         <Button
@@ -178,11 +217,15 @@ export function ProjectAgentsPanel({
         </Button>
       </header>
 
-      {/* 4 columnas en ≥xl, 2 en ≥md, 1 en móvil. Cada tarjeta es
-          clickable y abre el modal de edición igual que el botón de
-          arriba — cualquier punto del card es un trigger del dialog. */}
+      {/* Six slot cards. Breakpoint choice (migration 0012):
+            * mobile           → 1 column
+            * md (≥ 768px)     → 2 columns
+            * xl (≥ 1280px)    → 3 columns
+            * 2xl (≥ 1536px)   → 6 columns (single row on wide displays)
+          Three columns at ``xl`` keeps the cards readable on a typical
+          14-16" laptop; six-up only kicks in on truly wide screens. */}
       <ul
-        className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4"
+        className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6"
         data-testid="project-agents-list"
       >
         {SLOTS.map((slot) => {
@@ -240,7 +283,7 @@ export function ProjectAgentsPanel({
           parent project) also re-seeds the dialog state if the user
           re-opens it. */}
       <EditAgentBindingsDialog
-        key={`${dialogOpen ? "open" : "closed"}:${project.orchestrator_agent_id ?? ""}:${project.worker_agent_id ?? ""}:${project.investigator_agent_id ?? ""}:${project.auditor_agent_id ?? ""}`}
+        key={`${dialogOpen ? "open" : "closed"}:${project.orchestrator_agent_id ?? ""}:${project.investigator_agent_id ?? ""}:${project.marker_agent_id ?? ""}:${project.worker_agent_id ?? ""}:${project.tutor_agent_id ?? ""}:${project.auditor_agent_id ?? ""}`}
         project={project}
         open={dialogOpen}
         onOpenChange={setDialogOpen}
@@ -251,8 +294,8 @@ export function ProjectAgentsPanel({
 }
 
 // ---------------------------------------------------------------------------
-// Dialog — three selects, prefilled with current project values. Saves
-// via PATCH /api/projects/{id} with the three *_agent_id fields. Empty
+// Dialog — six selects, prefilled with current project values. Saves
+// via PATCH /api/projects/{id} with the six *_agent_id fields. Empty
 // string maps to null on the way out.
 // ---------------------------------------------------------------------------
 
@@ -272,19 +315,27 @@ function EditAgentBindingsDialog({
   const [orchestratorId, setOrchestratorId] = useState<string>(
     project.orchestrator_agent_id ?? "",
   );
+  const [investigatorId, setInvestigatorId] = useState<string>(
+    project.investigator_agent_id ?? "",
+  );
+  const [markerId, setMarkerId] = useState<string>(
+    project.marker_agent_id ?? "",
+  );
   const [workerId, setWorkerId] = useState<string>(
     project.worker_agent_id ?? "",
   );
-  const [investigatorId, setInvestigatorId] = useState<string>(
-    project.investigator_agent_id ?? "",
+  const [tutorId, setTutorId] = useState<string>(
+    project.tutor_agent_id ?? "",
   );
   const [auditorId, setAuditorId] = useState<string>(
     project.auditor_agent_id ?? "",
   );
 
   const [orchestrators, setOrchestrators] = useState<AgentSummary[]>([]);
-  const [workers, setWorkers] = useState<AgentSummary[]>([]);
   const [investigators, setInvestigators] = useState<AgentSummary[]>([]);
+  const [markers, setMarkers] = useState<AgentSummary[]>([]);
+  const [workers, setWorkers] = useState<AgentSummary[]>([]);
+  const [tutors, setTutors] = useState<AgentSummary[]>([]);
   const [auditors, setAuditors] = useState<AgentSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -295,23 +346,27 @@ function EditAgentBindingsDialog({
   // dialog opens or the underlying project slot ids change — which
   // means the useState initializers above always see fresh values.
 
-  // Load four lists when the dialog opens.
+  // Load six lists when the dialog opens.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     const load = async (): Promise<void> => {
       setLoading(true);
       try {
-        const [o, w, i, a] = await Promise.all([
+        const [o, i, m, w, t, a] = await Promise.all([
           listAgents({ type: "orchestrator" }),
-          listAgents({ type: "worker" }),
           listAgents({ type: "investigator" }),
+          listAgents({ type: "marker" }),
+          listAgents({ type: "worker" }),
+          listAgents({ type: "tutor" }),
           listAgents({ type: "auditor" }),
         ]);
         if (cancelled) return;
         setOrchestrators(o);
-        setWorkers(w);
         setInvestigators(i);
+        setMarkers(m);
+        setWorkers(w);
+        setTutors(t);
         setAuditors(a);
       } catch {
         if (cancelled) return;
@@ -328,8 +383,10 @@ function EditAgentBindingsDialog({
 
   const dirty =
     orchestratorId !== (project.orchestrator_agent_id ?? "") ||
-    workerId !== (project.worker_agent_id ?? "") ||
     investigatorId !== (project.investigator_agent_id ?? "") ||
+    markerId !== (project.marker_agent_id ?? "") ||
+    workerId !== (project.worker_agent_id ?? "") ||
+    tutorId !== (project.tutor_agent_id ?? "") ||
     auditorId !== (project.auditor_agent_id ?? "");
 
   const duplicateWarning = useMemo(
@@ -337,10 +394,12 @@ function EditAgentBindingsDialog({
       duplicateAgentWarning(
         orchestratorId,
         investigatorId,
+        markerId,
         workerId,
+        tutorId,
         auditorId,
       ),
-    [orchestratorId, investigatorId, workerId, auditorId],
+    [orchestratorId, investigatorId, markerId, workerId, tutorId, auditorId],
   );
 
   function requestClose(): void {
@@ -361,8 +420,10 @@ function EditAgentBindingsDialog({
     try {
       const updated = await patchProject(project.id, {
         orchestrator_agent_id: orchestratorId || null,
-        worker_agent_id: workerId || null,
         investigator_agent_id: investigatorId || null,
+        marker_agent_id: markerId || null,
+        worker_agent_id: workerId || null,
+        tutor_agent_id: tutorId || null,
         auditor_agent_id: auditorId || null,
       });
       onSaved(updated);
@@ -389,7 +450,7 @@ function EditAgentBindingsDialog({
             <DialogTitle>Editar asignaciones de agentes</DialogTitle>
             <DialogDescription>
               Vincula el proyecto con una definición de Orquestador,
-              Investigador, Worker y/o Auditor.
+              Investigador, Marker, Worker, Tutor y/o Auditor.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
@@ -410,12 +471,28 @@ function EditAgentBindingsDialog({
               onChange={setInvestigatorId}
             />
             <AgentDialogPicker
+              id="dlg-marker-agent"
+              label="Marker"
+              loading={loading}
+              agents={markers}
+              value={markerId}
+              onChange={setMarkerId}
+            />
+            <AgentDialogPicker
               id="dlg-worker-agent"
               label="Worker"
               loading={loading}
               agents={workers}
               value={workerId}
               onChange={setWorkerId}
+            />
+            <AgentDialogPicker
+              id="dlg-tutor-agent"
+              label="Tutor"
+              loading={loading}
+              agents={tutors}
+              value={tutorId}
+              onChange={setTutorId}
             />
             <AgentDialogPicker
               id="dlg-auditor-agent"
@@ -537,13 +614,15 @@ function AgentDialogPicker({
 }
 
 /**
- * Shared helper — flag if the operator picked the same agent.id in more
- * than one slot. Returns null if all picks are distinct or empty.
+ * Shared helper — flag if the operator picked the same agent.id in
+ * more than one slot. Returns null if all picks are distinct or empty.
  */
 function duplicateAgentWarning(
   orchestratorId: string,
   investigatorId: string,
+  markerId: string,
   workerId: string,
+  tutorId: string,
   auditorId: string,
 ): string | null {
   const labels: Record<string, string[]> = {};
@@ -554,7 +633,9 @@ function duplicateAgentWarning(
   };
   push(orchestratorId, "Orquestador");
   push(investigatorId, "Investigador");
+  push(markerId, "Marker");
   push(workerId, "Worker");
+  push(tutorId, "Tutor");
   push(auditorId, "Auditor");
   for (const slots of Object.values(labels)) {
     if (slots.length > 1) {

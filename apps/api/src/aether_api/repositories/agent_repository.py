@@ -68,20 +68,23 @@ class AgentRepository(BaseRepository):
         """Return ``{agent_id: count}`` for each ``agent_id`` in input.
 
         Counts how many of the caller's ``projects`` rows reference each
-        agent via any of the three FK columns (worker / investigator /
-        auditor). Used by the list endpoint so the UI can show a
-        "referenced by N projects" badge — and so the delete endpoint can
-        surface the same number in its 409 detail.
+        agent via any of the six FK columns (orchestrator / investigator
+        / marker / worker / tutor / auditor — migration 0012 added the
+        Marker and Tutor slots). Used by the list endpoint so the UI
+        can show a "referenced by N projects" badge — and so the delete
+        endpoint can surface the same number in its 409 detail.
         """
         if not agent_ids:
             return {}
 
         # One row per (agent_id, project_id) pair where the project
-        # references the agent in any of the four FK slots. Then
+        # references the agent in any of the six FK slots. Then
         # GROUP BY agent_id and COUNT(DISTINCT project_id).
         orchestrator_match = Project.orchestrator_agent_id.in_(agent_ids)
-        worker_match = Project.worker_agent_id.in_(agent_ids)
         investigator_match = Project.investigator_agent_id.in_(agent_ids)
+        marker_match = Project.marker_agent_id.in_(agent_ids)
+        worker_match = Project.worker_agent_id.in_(agent_ids)
+        tutor_match = Project.tutor_agent_id.in_(agent_ids)
         auditor_match = Project.auditor_agent_id.in_(agent_ids)
 
         agent_id_expr = case(
@@ -89,11 +92,16 @@ class AgentRepository(BaseRepository):
                 Project.orchestrator_agent_id.in_(agent_ids),
                 Project.orchestrator_agent_id,
             ),
-            (Project.worker_agent_id.in_(agent_ids), Project.worker_agent_id),
             (
                 Project.investigator_agent_id.in_(agent_ids),
                 Project.investigator_agent_id,
             ),
+            (
+                Project.marker_agent_id.in_(agent_ids),
+                Project.marker_agent_id,
+            ),
+            (Project.worker_agent_id.in_(agent_ids), Project.worker_agent_id),
+            (Project.tutor_agent_id.in_(agent_ids), Project.tutor_agent_id),
             (Project.auditor_agent_id.in_(agent_ids), Project.auditor_agent_id),
         ).label("agent_id")
 
@@ -103,8 +111,10 @@ class AgentRepository(BaseRepository):
             .where(
                 or_(
                     orchestrator_match,
-                    worker_match,
                     investigator_match,
+                    marker_match,
+                    worker_match,
+                    tutor_match,
                     auditor_match,
                 )
             )
@@ -121,15 +131,21 @@ class AgentRepository(BaseRepository):
     async def list_referencing_projects(
         self, user_id: uuid.UUID, agent_id: uuid.UUID
     ) -> list[uuid.UUID]:
-        """Return the ``id``s of the caller's projects that FK ``agent_id``."""
+        """Return the ``id``s of the caller's projects that FK ``agent_id``.
+
+        Scans all six FK slots — Orquestador, Investigador, Marker,
+        Worker, Tutor, Auditor (migration 0012 added Marker + Tutor).
+        """
         stmt = (
             select(Project.id)
             .where(Project.user_id == user_id)
             .where(
                 or_(
                     Project.orchestrator_agent_id == agent_id,
-                    Project.worker_agent_id == agent_id,
                     Project.investigator_agent_id == agent_id,
+                    Project.marker_agent_id == agent_id,
+                    Project.worker_agent_id == agent_id,
+                    Project.tutor_agent_id == agent_id,
                     Project.auditor_agent_id == agent_id,
                 )
             )

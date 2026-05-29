@@ -1,13 +1,20 @@
 """``agents`` table — see CHARTER.md "Modelo de Datos: tabla `agents`".
 
 Note: ``type`` is a Python ``str`` here; the CHECK constraint on the DB
-side enforces the {orchestrator, worker, investigator, auditor} set. A
-DB ENUM would require a migration on every new agent type which is
-exactly the flexibility we don't want.
+side enforces the set {orchestrator, investigator, marker, worker,
+tutor, auditor}. A DB ENUM would require a migration on every new
+agent type which is exactly the flexibility we don't want.
 
-Charter correction (migration 0010): the Orquestador IS a definable
-agent like the others. Previous wording that treated it as the backend
-control plane only was wrong.
+Charter corrections:
+  * Migration 0010 — the Orquestador IS a definable agent like the
+    others. Previous wording that treated it as the backend control
+    plane only was wrong.
+  * Migration 0012 — the Investigador is re-scoped to **news only**;
+    the prior market-signal duty moves to the new ``marker`` agent.
+    A new ``tutor`` agent now owns the Sleep Phase mechanics.
+    Existing ``investigator`` rows are NOT mutated — operators re-tag
+    by hand if they want a row to mean "marker" rather than
+    "news watcher".
 """
 
 from __future__ import annotations
@@ -26,24 +33,46 @@ from aether_api.db.base import Base
 #: CHECK constraint ``agents_type_valid`` is the source of truth.
 #:
 #: Convention for ``entrypoint`` per type:
-#:   * ``orchestrator`` → ``orchestrate(ctx)`` — supervises the other
-#:     agents and decides which to dispatch.
-#:   * ``investigator`` → ``investigate(ctx)`` — analyses market state.
-#:   * ``worker``       → ``on_tick(ctx)``   — executes per-tick trading.
-#:   * ``auditor``      → ``audit(ctx)``    — checks risk + plan adherence.
+#:   * ``orchestrator`` → ``orchestrate(ctx)`` — supervises every other
+#:     agent and decides which to dispatch.
+#:   * ``investigator`` → ``analyze_news(ctx)`` — reads and summarises
+#:     all relevant news sources. (Pre-0012 rows that use
+#:     ``analyze(ctx)`` keep working — that name remains a documented
+#:     soft fallback for legacy rows.)
+#:   * ``marker``       → ``mark_signal(ctx)`` — emits the current
+#:     market regime + the option to switch on. New in 0012.
+#:   * ``worker``       → ``on_tick(ctx)``    — executes per-tick
+#:     trading against MT5 via MCP.
+#:   * ``tutor``        → ``on_sleep(ctx)``   — conducts the Sleep
+#:     Phase (Micro / Profundo / Crítico). New in 0012.
+#:   * ``auditor``      → ``evaluate(ctx)``   — checks risk + plan
+#:     adherence; scope expanded in 0012 to also analyse the q-table
+#:     and the MT5 broker reports.
+#:
+#: Order matches the charter prose: supervisor → research news →
+#: market signal → execute → sleep/teach → audit.
 AGENT_TYPES: Final[tuple[str, ...]] = (
     "orchestrator",
-    "worker",
     "investigator",
+    "marker",
+    "worker",
+    "tutor",
     "auditor",
 )
 
 
 class Agent(Base):
-    """Reusable agent definition (Orchestrator / Worker / Investigator / Auditor).
+    """Reusable agent definition.
 
-    Charter correction (migration 0010): the Orquestador is now a
-    first-class definable agent, modelled exactly like the other three.
+    Six types (post-0012):
+
+    * ``orchestrator`` — system supervisor (unchanged).
+    * ``investigator`` — news watcher (re-scoped in 0012).
+    * ``marker`` — market-signal + option-to-switch (new in 0012).
+    * ``worker`` — bot-style execution against MT5/MCP (unchanged).
+    * ``tutor`` — Sleep Phase conductor (new in 0012).
+    * ``auditor`` — operativa + q-table + MT5 reports (scope expanded
+      in 0012; no DDL change).
     """
 
     __tablename__ = "agents"
@@ -84,7 +113,8 @@ class Agent(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "type IN ('orchestrator', 'worker', 'investigator', 'auditor')",
+            "type IN ('orchestrator', 'investigator', 'marker', "
+            "'worker', 'tutor', 'auditor')",
             name="agents_type_valid",
         ),
         CheckConstraint("runtime = 'python'", name="agents_runtime_only_python"),

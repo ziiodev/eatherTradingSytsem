@@ -17,13 +17,20 @@ import {
 } from "./agents";
 
 describe("agent constants", () => {
-  it("defines exactly four types (charter correction — migration 0010)", () => {
+  it("defines exactly six types in slot order (migrations 0010 + 0012)", () => {
     expect(AGENT_TYPES).toEqual([
       "orchestrator",
       "investigator",
+      "marker",
       "worker",
+      "tutor",
       "auditor",
     ]);
+  });
+
+  it("includes marker and tutor (migration 0012)", () => {
+    expect(AGENT_TYPES).toContain("marker");
+    expect(AGENT_TYPES).toContain("tutor");
   });
 
   it("ships a template for every type that includes the canonical entrypoint", () => {
@@ -34,8 +41,13 @@ describe("agent constants", () => {
     }
   });
 
-  it("uses orchestrate(ctx) as the orchestrator entrypoint convention", () => {
+  it("locks the entrypoint conventions per type", () => {
     expect(AGENT_TYPE_DEFAULT_ENTRYPOINT.orchestrator).toBe("orchestrate");
+    expect(AGENT_TYPE_DEFAULT_ENTRYPOINT.investigator).toBe("analyze_news");
+    expect(AGENT_TYPE_DEFAULT_ENTRYPOINT.marker).toBe("mark_signal");
+    expect(AGENT_TYPE_DEFAULT_ENTRYPOINT.worker).toBe("on_tick");
+    expect(AGENT_TYPE_DEFAULT_ENTRYPOINT.tutor).toBe("on_sleep");
+    expect(AGENT_TYPE_DEFAULT_ENTRYPOINT.auditor).toBe("evaluate");
   });
 });
 
@@ -57,6 +69,26 @@ describe("agentCreateSchema", () => {
       entrypoint: "orchestrate",
     });
     expect(parsed.type).toBe("orchestrator");
+  });
+
+  it("accepts a marker agent (migration 0012)", () => {
+    const parsed = agentCreateSchema.parse({
+      name: "regime",
+      type: "marker",
+      logica: "def mark_signal(ctx): return None",
+      entrypoint: "mark_signal",
+    });
+    expect(parsed.type).toBe("marker");
+  });
+
+  it("accepts a tutor agent (migration 0012)", () => {
+    const parsed = agentCreateSchema.parse({
+      name: "sleep-coach",
+      type: "tutor",
+      logica: "def on_sleep(ctx): return None",
+      entrypoint: "on_sleep",
+    });
+    expect(parsed.type).toBe("tutor");
   });
 
   it("rejects an invalid type", () => {

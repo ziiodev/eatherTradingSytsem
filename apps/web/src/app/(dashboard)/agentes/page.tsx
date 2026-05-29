@@ -54,8 +54,10 @@ type TabKey = AgentType | "all";
 
 const TAB_LABEL: Record<TabKey, string> = {
   orchestrator: "Orquestadores",
-  worker: "Workers",
   investigator: "Investigadores",
+  marker: "Markers",
+  worker: "Workers",
+  tutor: "Tutores",
   auditor: "Auditores",
   all: "Todos",
 };
@@ -155,7 +157,7 @@ export default function AgentesPage(): React.JSX.Element {
           <h1 className="text-2xl font-semibold tracking-tight">Agentes</h1>
           <p className="text-sm text-[rgb(var(--foreground-muted))]">
             Catálogo de agentes reutilizables (Orquestador / Investigador /
-            Worker / Auditor).
+            Marker / Worker / Tutor / Auditor).
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -180,13 +182,18 @@ export default function AgentesPage(): React.JSX.Element {
         className="gap-4"
       >
         <TabsList>
+          {/* Tab order matches the agent slot order: Todos →
+              Orquestador → Investigador → Marker → Worker → Tutor →
+              Auditor. Migration 0012 added Marker and Tutor. */}
           {(
             [
+              "all",
               "orchestrator",
               "investigator",
+              "marker",
               "worker",
+              "tutor",
               "auditor",
-              "all",
             ] as TabKey[]
           ).map((key) => (
             <TabsTrigger key={key} value={key}>

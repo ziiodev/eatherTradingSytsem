@@ -63,19 +63,38 @@ router = APIRouter(prefix="/api/agents", tags=["agents"])
 # Schemas
 # ---------------------------------------------------------------------------
 
-AgentType = Literal["orchestrator", "worker", "investigator", "auditor"]
+AgentType = Literal[
+    "orchestrator",
+    "investigator",
+    "marker",
+    "worker",
+    "tutor",
+    "auditor",
+]
 
 #: Default entrypoint name per agent type. The UI seeds the template
 #: with a ``def`` of the same name; if the operator renames the function
 #: without renaming ``entrypoint``, we surface a non-blocking warning.
 #:
-#: Charter correction (migration 0010): the Orquestador joins the map
-#: with ``orchestrate(ctx)`` as the canonical entrypoint.
+#: Charter corrections:
+#:   * Migration 0010 — the Orquestador joins the map with
+#:     ``orchestrate(ctx)``.
+#:   * Migration 0012 — the Investigador convention is RENAMED to
+#:     ``analyze_news(ctx)`` to reflect its narrowed news-only scope.
+#:     Legacy rows that still expose ``analyze(ctx)`` continue to work;
+#:     the convention warning is informational, never blocking.
+#:     New types ``marker`` (``mark_signal(ctx)``) and ``tutor``
+#:     (``on_sleep(ctx)``) are added. The Auditor convention is
+#:     renamed to ``evaluate(ctx)``; its scope expanded to include
+#:     q-table + MT5 reports, but the entrypoint signature stays
+#:     unchanged.
 _DEFAULT_ENTRYPOINTS: dict[str, str] = {
     "orchestrator": "orchestrate",
+    "investigator": "analyze_news",
+    "marker": "mark_signal",
     "worker": "on_tick",
-    "investigator": "investigate",
-    "auditor": "audit",
+    "tutor": "on_sleep",
+    "auditor": "evaluate",
 }
 
 

@@ -35,12 +35,16 @@ A multi-agent automated trading system that operates on MetaTrader 5 via **MCP (
 
 ### Agent topology
 
-Four specialized agents collaborate. When designing or implementing, respect these roles — don't collapse them or move responsibilities across boundaries without explicit user approval.
+**1 Orchestrator + 5 specialised agents** (post-migration `0012`). When designing or implementing, respect these roles — don't collapse them or move responsibilities across boundaries without explicit user approval.
 
-1. **Orchestrator** — top-level supervisor. Decomposes goals, assigns tasks, resolves conflicts, enforces risk rules. Has final authority.
-2. **Researcher** — produces market context: technical, fundamental, sentiment, news, correlations. Feeds both Worker and Orchestrator.
-3. **Worker (Executor)** — runs project-specific trading logic, consumes Researcher signals, sends real orders to MT5 (entries, SL, TP, trailing, closes). May tune strategy parameters within safe bounds.
-4. **Auditor** — collects MT5 state in real time and at session end. Computes Profit Factor, Sharpe, Max Drawdown, Win Rate, R:R, exposure. Detects anomalies. May propose or trigger emergency stop on severe issues.
+1. **Orchestrator** — top-level supervisor. Decomposes goals, assigns tasks, resolves conflicts, enforces risk rules. Has final authority. Entrypoint: `orchestrate(ctx)`.
+2. **Investigador (news watcher)** — reads and summarises every news source the project subscribes to (technical-news, fundamental, sentiment, macro calendars). Re-scoped in `0012`: the previous "market signal" duty moves to the Marker. Entrypoint: `analyze_news(ctx)` (legacy rows that still export `analyze(ctx)` are accepted as a documented soft fallback).
+3. **Marker** *(new in `0012`)* — emits the current market regime + the option the project should switch on. This is the role the Investigador used to play before the split. Entrypoint: `mark_signal(ctx)`.
+4. **Worker (Executor)** — runs project-specific trading logic, consumes the Investigador's news brief AND the Marker's signal, sends real orders to MT5 (entries, SL, TP, trailing, closes). May tune strategy parameters within safe bounds. Entrypoint: `on_tick(ctx)`.
+5. **Tutor** *(new in `0012`)* — owns the Sleep Phase mechanics. Conducts Micro / Deep / Critical sleeps, gathers reflections, proposes updates to the other agents' logic. The Orchestrator supervises and applies the resulting proposals; the single-writer invariant on `q_tables`/`semantic_memory`/`sleep_reports` stays with the Orchestrator. Entrypoint: `on_sleep(ctx)`.
+6. **Auditor** — collects MT5 state in real time and at session end. Computes Profit Factor, Sharpe, Max Drawdown, Win Rate, R:R, exposure. **Scope expanded in `0012`** to also analyse the **q-table** and the **MT5 broker reports**. Detects anomalies. May propose or trigger emergency stop on severe issues. Entrypoint: `evaluate(ctx)` (entrypoint name standardised in `0012`; previous code referred to `audit(ctx)` — keep as a documented soft fallback if any legacy row still uses it).
+
+Slot order (locked across DB / backend / frontend / forms / panels / agentes-page tabs): **orchestrator → investigator → marker → worker → tutor → auditor**.
 
 ### Mandatory operating rules
 
@@ -64,7 +68,7 @@ The system enters periodic "Sleep Phases." This is not optional polish — it's 
 - **Deep sleep** — daily outside main market hours (target 00:00–06:00 UTC) or weekends.
 - **Critical sleep** — triggered by the Auditor on severe issues.
 
-During a Sleep Phase: Auditor analyzes trades, Researcher mines failure patterns, Worker reflects on its decisions, Orchestrator synthesizes and decides parameter/timeframe/rule/prompt updates. Outputs: long-term memory writes, **versioned config** (must be revertible), and a wake-up step that applies low-risk changes automatically while gating important ones on human confirmation.
+During a Sleep Phase: Auditor analyses trades + q-table + MT5 broker reports, Investigador mines news-side failure patterns, Marker re-evaluates past market signals, Worker reflects on its decisions, **Tutor** (new in `0012`) coordinates the whole loop, and the Orchestrator synthesises + applies parameter/timeframe/rule/prompt updates. Outputs: long-term memory writes, **versioned config** (must be revertible), and a wake-up step that applies low-risk changes automatically while gating important ones on human confirmation. The Tutor owns the *mechanics*; the Orchestrator remains the **single writer** for `q_tables` / `semantic_memory` / `sleep_reports` — do not add a Tutor write path into those tables.
 
 When designing storage or config layers, assume Sleep Phase needs: append-only trade history, structured per-agent reflections, and config snapshots with rollback.
 
@@ -135,19 +139,20 @@ The canonical schema for a trading project lives in `CHARTER.md` under "Modelo d
 - `mcp_url` + `mcp_port` are the per-project MT5/MCP endpoint — see container topology below.
 - **Broker credentials**: `account_credential_ref` is **always** a pointer into an external secret store. Never store broker passwords as plaintext in this table or any other.
 - **Cost columns** (`commission_per_lot`, `swap_long`, `swap_short`, `spread_typical`, `commission_currency`) feed the Auditor's net-of-cost metrics and the real R:R calculation. If the broker doesn't expose one, leave `NULL` and have agents treat it as "unknown," not zero.
-- **Per-agent params** are four JSONB columns: `orchestrator_params`, `auditor_params`, `investigator_params`, `worker_params`. Schema is owned by each agent and validated at startup. If per-agent config history (e.g. across Sleep Phases) gets dense, promote to a `project_agent_configs` side table — don't bloat the JSONB with embedded history. *Charter correction (migration 0010): `orchestrator_params` was added — the Orquestador is now a first-class agent slot.*
+- **Per-agent params** are **six JSONB columns**: `orchestrator_params`, `investigator_params`, `marker_params`, `worker_params`, `tutor_params`, `auditor_params`. Schema is owned by each agent and validated at startup. If per-agent config history (e.g. across Sleep Phases) gets dense, promote to a `project_agent_configs` side table — don't bloat the JSONB with embedded history. *Charter corrections: migration 0010 added `orchestrator_params`; migration 0012 added `marker_params` (market-signal split out of the Investigador) and `tutor_params` (Sleep Phase split out of the Orchestrator).*
 - **`trading_sessions TEXT[]`** declares the geographic market sessions in which the Worker is allowed to operate. Allowed values: `sydney`, `shanghai`, `tokyo`, `europe`, `new_york` (enforced via CHECK constraint). Empty array = Worker does not operate. Actual session **clock windows live outside this table** — keep them in backend reference data/constants with DST awareness (US + Europe observe DST; Shanghai doesn't). The Auditor must flag any fill executed outside the union of declared sessions.
 
 ### Data model — `agents` table
 
-Four agent definitions per project, each carrying executable Python logic. Full DDL in `CHARTER.md` under "Modelo de Datos: tabla `agents`". Key things to internalize:
+Up to **six** agent slot definitions per project, each carrying executable Python logic. Full DDL in `CHARTER.md` under "Modelo de Datos: tabla `agents`". Key things to internalise:
 
-- **One row = one reusable agent definition.** `type` ∈ `{orchestrator, worker, investigator, auditor}` — *charter correction (migration 0010): the Orquestador IS a definable agent row, not just the backend's control plane. The previous interpretation was wrong.*
+- **One row = one reusable agent definition.** `type` ∈ `{orchestrator, investigator, marker, worker, tutor, auditor}` — *charter corrections: migration 0010 promoted Orquestador to a first-class row; migration 0012 added `marker` (market signal, split from the Investigador) and `tutor` (Sleep Phase, split from the Orchestrator).*
 - **`logica TEXT` is the executable body** (Python source). The `runtime` column is CHECK-constrained to `'python'` — there is no DB-level way to set it to MQL5. This is enforcement, not convention.
-- **Reused across projects.** A single `agents.id` may be referenced from many `projects` rows via `orchestrator_agent_id` / `worker_agent_id` / `investigator_agent_id` / `auditor_agent_id`. Per-project tuning happens in the JSONB `*_params` columns on `projects`, not by duplicating agent rows.
-- **`entrypoint`** names the Python function the backend will invoke. Canonical convention: Orchestrator = `orchestrate(ctx)`, Worker = `on_tick(ctx)`, Investigator = `investigate(ctx)`, Auditor = `audit(ctx)`. The contract is owned by the backend, not the agent row.
-- **`ON DELETE RESTRICT`** from `projects` → `agents`. To remove an agent, set `is_active = false`. Hard-deletion only when no project still references it.
+- **Reused across projects.** A single `agents.id` may be referenced from many `projects` rows via `orchestrator_agent_id` / `investigator_agent_id` / `marker_agent_id` / `worker_agent_id` / `tutor_agent_id` / `auditor_agent_id`. Per-project tuning happens in the JSONB `*_params` columns on `projects`, not by duplicating agent rows.
+- **`entrypoint`** names the Python function the backend will invoke. Canonical convention (post-`0012`): Orchestrator = `orchestrate(ctx)`, Investigador = `analyze_news(ctx)`, Marker = `mark_signal(ctx)`, Worker = `on_tick(ctx)`, Tutor = `on_sleep(ctx)`, Auditor = `evaluate(ctx)`. Legacy rows that still export `investigate(ctx)` / `analyze(ctx)` / `audit(ctx)` are accepted as documented soft fallbacks — the entrypoint warning is informational, never blocking. The contract is owned by the backend, not the agent row.
+- **`ON DELETE RESTRICT`** from `projects` → `agents` (all six FK slots). To remove an agent, set `is_active = false`. Hard-deletion only when no project still references it.
 - **Versioning is single-row (`version` int).** When Sleep Phase generates many revisions of `logica`, promote history to a `agent_versions` side table — don't embed it inside the row.
+- **Existing rows are NEVER retro-mutated by migration 0012.** Rows with `type='investigator'` keep that value even though the semantics narrowed to "news watcher". If an operator wants a specific row to behave as the market-signal agent, they update its `type` to `marker` by hand from the UI; the migration does not guess.
 - **Security gate (NOT in DDL but firm requirement):** executing `agents.logica` is arbitrary code execution. The backend MUST sandbox it — isolated subprocess, no host filesystem, network restricted to that project's MCP endpoint. Capture this when writing the Worker spec; not optional.
 
 ### Per-project infrastructure (Docker + MT5)

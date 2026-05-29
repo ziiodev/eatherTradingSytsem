@@ -176,8 +176,10 @@ class ProjectDetail(BaseModel):
 
     # Agentes
     orchestrator_agent_id: uuid.UUID | None = None
-    worker_agent_id: uuid.UUID | None = None
     investigator_agent_id: uuid.UUID | None = None
+    marker_agent_id: uuid.UUID | None = None
+    worker_agent_id: uuid.UUID | None = None
+    tutor_agent_id: uuid.UUID | None = None
     auditor_agent_id: uuid.UUID | None = None
 
     # Ventanas
@@ -185,9 +187,11 @@ class ProjectDetail(BaseModel):
 
     # JSONB
     orchestrator_params: dict[str, Any] = Field(default_factory=dict)
-    auditor_params: dict[str, Any] = Field(default_factory=dict)
     investigator_params: dict[str, Any] = Field(default_factory=dict)
+    marker_params: dict[str, Any] = Field(default_factory=dict)
     worker_params: dict[str, Any] = Field(default_factory=dict)
+    tutor_params: dict[str, Any] = Field(default_factory=dict)
+    auditor_params: dict[str, Any] = Field(default_factory=dict)
 
     # Fechas
     created_at: datetime | None = None
@@ -246,8 +250,10 @@ class ProjectCreate(BaseModel):
 
     # Agentes
     orchestrator_agent_id: uuid.UUID | None = None
-    worker_agent_id: uuid.UUID | None = None
     investigator_agent_id: uuid.UUID | None = None
+    marker_agent_id: uuid.UUID | None = None
+    worker_agent_id: uuid.UUID | None = None
+    tutor_agent_id: uuid.UUID | None = None
     auditor_agent_id: uuid.UUID | None = None
 
     # Ventanas operativas
@@ -255,9 +261,11 @@ class ProjectCreate(BaseModel):
 
     # JSONB
     orchestrator_params: dict[str, Any] = Field(default_factory=dict)
-    auditor_params: dict[str, Any] = Field(default_factory=dict)
     investigator_params: dict[str, Any] = Field(default_factory=dict)
+    marker_params: dict[str, Any] = Field(default_factory=dict)
     worker_params: dict[str, Any] = Field(default_factory=dict)
+    tutor_params: dict[str, Any] = Field(default_factory=dict)
+    auditor_params: dict[str, Any] = Field(default_factory=dict)
 
     # Metadata
     tags: list[str] | None = Field(default=None, max_length=20)
@@ -342,16 +350,20 @@ class ProjectPatch(BaseModel):
     base_logic: str | None = Field(default=None, max_length=20_000)
 
     orchestrator_agent_id: uuid.UUID | None = None
-    worker_agent_id: uuid.UUID | None = None
     investigator_agent_id: uuid.UUID | None = None
+    marker_agent_id: uuid.UUID | None = None
+    worker_agent_id: uuid.UUID | None = None
+    tutor_agent_id: uuid.UUID | None = None
     auditor_agent_id: uuid.UUID | None = None
 
     trading_sessions: list[str] | None = Field(default=None, max_length=10)
 
     orchestrator_params: dict[str, Any] | None = None
-    auditor_params: dict[str, Any] | None = None
     investigator_params: dict[str, Any] | None = None
+    marker_params: dict[str, Any] | None = None
     worker_params: dict[str, Any] | None = None
+    tutor_params: dict[str, Any] | None = None
+    auditor_params: dict[str, Any] | None = None
 
     tags: list[str] | None = Field(default=None, max_length=20)
     notes: str | None = Field(default=None, max_length=4000)
@@ -560,14 +572,18 @@ _PATCH_ALLOWED_FIELDS: frozenset[str] = frozenset(
         "strategy_description",
         "base_logic",
         "orchestrator_agent_id",
-        "worker_agent_id",
         "investigator_agent_id",
+        "marker_agent_id",
+        "worker_agent_id",
+        "tutor_agent_id",
         "auditor_agent_id",
         "trading_sessions",
         "orchestrator_params",
-        "auditor_params",
         "investigator_params",
+        "marker_params",
         "worker_params",
+        "tutor_params",
+        "auditor_params",
         "tags",
         "notes",
     }
