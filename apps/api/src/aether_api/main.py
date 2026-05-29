@@ -464,6 +464,28 @@ def create_app() -> FastAPI:
     async def healthz() -> dict[str, object]:
         return {"ok": True, "version": __version__}
 
+    @app.get("/api/health", tags=["meta"])
+    async def api_health() -> dict[str, object]:
+        """Feature-flag advertisement consumed by the frontend.
+
+        Returns the subset of server-side feature flags the dashboard
+        needs to decide which UI affordances to render. The flags are
+        AND-ed with their hard preconditions (e.g. ``chat_enabled``
+        requires both ``settings.chat_enabled`` AND a configured
+        Anthropic API key) so the UI never lights up a surface that
+        the backend will then 503.
+        """
+        current = get_settings()
+        return {
+            "ok": True,
+            "version": __version__,
+            "features": {
+                "learning_enabled": bool(current.learning_enabled),
+                "chat_enabled": bool(current.chat_enabled)
+                and current.anthropic_api_key is not None,
+            },
+        }
+
     return app
 
 

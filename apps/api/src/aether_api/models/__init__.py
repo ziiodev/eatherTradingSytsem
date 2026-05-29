@@ -9,6 +9,9 @@ from aether_api.models.agent import Agent
 from aether_api.models.agent_run import AgentRun
 from aether_api.models.agent_skill import AgentSkill
 from aether_api.models.audit_log import AuditLog
+from aether_api.models.chat_action_proposal import ChatActionProposal
+from aether_api.models.chat_conversation import ChatConversation
+from aether_api.models.chat_message import ChatMessage
 from aether_api.models.config_version import ConfigVersion
 from aether_api.models.container_event import ContainerEvent
 from aether_api.models.episodic_memory import EpisodicMemory
@@ -29,6 +32,9 @@ __all__ = [
     "AgentRun",
     "AgentSkill",
     "AuditLog",
+    "ChatActionProposal",
+    "ChatConversation",
+    "ChatMessage",
     "ConfigVersion",
     "ContainerEvent",
     "EpisodicMemory",

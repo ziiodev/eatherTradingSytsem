@@ -423,6 +423,22 @@ class Settings(BaseSettings):
     )
 
     # ------------------------------------------------------------------
+    # Project Chat — operator↔Claude assistant per-project surface.
+    # See ``sdd/project-chat/{spec/chat,design,tasks}``.
+    # ------------------------------------------------------------------
+    #: Master flag for the project-chat surface. When False, the chat
+    #: REST + SSE routes return 503 and the frontend hides the entry
+    #: point. ``True`` is the v1 default — the surface is only
+    #: operationally usable when an Anthropic API key is also configured
+    #: (``anthropic_api_key``); the health endpoint advertises
+    #: ``chat_enabled = flag AND bool(api_key)`` so the UI never lights
+    #: up without both being set.
+    chat_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("AETHER_CHAT_ENABLED"),
+    )
+
+    # ------------------------------------------------------------------
     # pydantic-settings config
     # ------------------------------------------------------------------
     model_config = SettingsConfigDict(
