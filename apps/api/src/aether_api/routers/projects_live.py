@@ -21,17 +21,20 @@ Endpoints (all tenant-scoped — cross-tenant returns 404):
 * ``GET  /{project_id}/approvals``
 * ``POST /{project_id}/approvals/{approval_id}/approve`` (CSRF, admin or owner)
 * ``POST /{project_id}/approvals/{approval_id}/reject``  (CSRF, admin or owner)
+* ``GET  /{project_id}/operativa/account-summary``       (operativa surface)
+* ``GET  /{project_id}/operativa/orders``                (operativa surface)
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aether_api.core.settings import get_settings
@@ -56,6 +59,7 @@ from aether_api.mcp_client.risk import (
     PositionExposure,
     build_order_inputs,
 )
+from aether_api.models.order import Order
 from aether_api.models.user import User
 from aether_api.repositories.order_repository import OrderRepository
 from aether_api.repositories.project_repository import ProjectRepository
@@ -116,6 +120,95 @@ class OrderRecord(BaseModel):
     magic: int | None = None
     created_at: datetime | None = None
     filled_at: datetime | None = None
+
+
+class OperativaOrderRecord(BaseModel):
+    """Extended order row for the Operativa surface.
+
+    Adds the eight Operativa columns (open/close timing + pricing + cost
+    breakdown + meta_data) that the base ``OrderRecord`` deliberately
+    omits. Pydantic serialises ``Decimal`` as string (model default) so
+    no precision is lost on the wire.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    agent_id: uuid.UUID | None = None
+    symbol: str
+    side: str
+    volume: Decimal
+    sl: Decimal
+    tp: Decimal | None = None
+    mt5_ticket: int | None = None
+    status: str
+    comment: str | None = None
+    magic: int | None = None
+    created_at: datetime | None = None
+    filled_at: datetime | None = None
+    open_time: datetime | None = None
+    open_price: Decimal | None = None
+    close_time: datetime | None = None
+    close_price: Decimal | None = None
+    commission: Decimal | None = None
+    swap: Decimal | None = None
+    profit_gross: Decimal | None = None
+    profit_net: Decimal | None = None
+    meta_data: dict[str, Any] = Field(default_factory=dict)
+
+
+class AccountSummaryResponse(BaseModel):
+    """Wire shape for ``GET /operativa/account-summary``.
+
+    All MCP-derived fields (``equity``, ``balance``, ``margin_used``,
+    ``margin_free``, ``current_drawdown``) are ``None`` when the
+    per-project MCP endpoint is unreachable; the DB-side P&L fields
+    (``pnl_day``, ``pnl_week``, ``pnl_month``) always compute regardless.
+    The endpoint NEVER returns 5xx on MCP failure — it returns 200 with
+    ``mcp_status = 'unavailable'`` so the dashboard can degrade.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    equity: Decimal | None = None
+    balance: Decimal | None = None
+    margin_used: Decimal | None = None
+    margin_free: Decimal | None = None
+    current_drawdown: Decimal | None = None
+    pnl_day: Decimal
+    pnl_week: Decimal
+    pnl_month: Decimal
+    mcp_status: Literal["available", "unavailable"]
+    source_at: datetime
+
+
+class OperativaMetrics(BaseModel):
+    """Wire shape for the metrics block of the Operativa orders endpoint.
+
+    ``profit_factor`` is ``float | str`` — the literal string
+    ``"Infinity"`` is emitted when there are wins but zero losses
+    (Python ``math.inf`` would fail strict JSON encoders). ``avg_rr``
+    is ``None`` when no trade has a valid R denominator.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    trades_total: int
+    win_rate: float
+    profit_factor: float | str
+    avg_rr: float | None
+    total_pnl: Decimal
+
+
+class OperativaOrdersResponse(BaseModel):
+    """Wire shape for ``GET /operativa/orders`` — paged list + metrics."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[OperativaOrderRecord]
+    total: int
+    metrics: OperativaMetrics
 
 
 # ---------------------------------------------------------------------------
@@ -579,12 +672,237 @@ async def reject_project_approval(
     return {"id": str(row.id), "status": row.status}
 
 
+# ---------------------------------------------------------------------------
+# Operativa surface — account summary + filtered orders
+# ---------------------------------------------------------------------------
+
+
+async def _sum_closed_pnl_since(
+    session: AsyncSession,
+    *,
+    project_id: uuid.UUID,
+    user_id: uuid.UUID,
+    since: datetime,
+) -> Decimal:
+    """Sum ``profit_net`` over closed orders for the project since ``since``.
+
+    Tenant-scoped via ``user_id``. ``close_time`` is the canonical "when
+    was this trade realised" axis — rows whose ``close_time`` is NULL
+    are excluded from the period (they cannot belong to any period).
+    Returns ``Decimal('0')`` when nothing matches.
+    """
+    stmt = select(func.coalesce(func.sum(Order.profit_net), 0)).where(
+        Order.project_id == project_id,
+        Order.user_id == user_id,
+        Order.status == "closed",
+        Order.close_time.is_not(None),
+        Order.close_time >= since,
+    )
+    raw = (await session.execute(stmt)).scalar_one() or 0
+    return Decimal(str(raw))
+
+
+@router.get(
+    "/{project_id}/operativa/account-summary",
+    response_model=AccountSummaryResponse,
+)
+async def get_operativa_account_summary(
+    project_id: uuid.UUID,
+    user: Annotated[User, Depends(current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AccountSummaryResponse:
+    """Operativa: combined MCP account state + DB-realised P&L.
+
+    Contract (per ``operativa-live`` spec):
+
+    * Always returns 200. NEVER returns 5xx on MCP failure — the
+      degraded path (``mcp_status='unavailable'``, MCP fields ``None``)
+      is a first-class flow because the operator surface must remain
+      usable when the broker leg is down.
+    * MCP-side fields (``equity``, ``balance``, ``margin_used``,
+      ``margin_free``, ``current_drawdown``) come from a live
+      ``mt5_get_account`` call; they are ``None`` when MCP is
+      unreachable.
+    * DB-side P&L fields (``pnl_day``, ``pnl_week``, ``pnl_month``)
+      always compute — they sum ``profit_net`` across closed orders
+      whose ``close_time`` falls inside the rolling window measured
+      back from ``source_at``.
+    * Tenant-scoped: cross-tenant returns 404 (no existence leak).
+    """
+    project = await _load_project_or_404(project_id, user, session)
+
+    # --- DB-side rolling P&L always computed -----------------------------
+    now = datetime.now(tz=UTC)
+    day_since = now - timedelta(days=1)
+    week_since = now - timedelta(days=7)
+    month_since = now - timedelta(days=30)
+
+    pnl_day = await _sum_closed_pnl_since(
+        session, project_id=project_id, user_id=user.id, since=day_since
+    )
+    pnl_week = await _sum_closed_pnl_since(
+        session, project_id=project_id, user_id=user.id, since=week_since
+    )
+    pnl_month = await _sum_closed_pnl_since(
+        session, project_id=project_id, user_id=user.id, since=month_since
+    )
+
+    # --- MCP-side live snapshot ------------------------------------------
+    equity: Decimal | None = None
+    balance: Decimal | None = None
+    margin_used: Decimal | None = None
+    margin_free: Decimal | None = None
+    current_drawdown: Decimal | None = None
+    mcp_status: Literal["available", "unavailable"] = "available"
+
+    client = get_mcp_client(project)
+    try:
+        account_payload = await client.get_account()
+    except MCPClientError:
+        # MCPUnreachable and any other MCP client failure degrade the
+        # response. Per spec we MUST NOT raise 5xx — the operator surface
+        # is expected to stay usable when the broker leg is down.
+        mcp_status = "unavailable"
+    else:
+        try:
+            equity = Decimal(str(account_payload.get("equity", "0")))
+            balance = Decimal(str(account_payload.get("balance", "0")))
+            margin_used = Decimal(str(account_payload.get("margin", "0")))
+            margin_free = Decimal(
+                str(account_payload.get("free_margin", account_payload.get("margin_free", "0")))
+            )
+            # Current drawdown defined as equity below balance — positive
+            # number = how far underwater we are. Clamp to 0 when equity
+            # >= balance (no drawdown). If the broker omits either, we
+            # leave the field at ``None`` rather than guessing.
+            if balance and balance > 0:
+                cdd = balance - equity
+                current_drawdown = cdd if cdd > 0 else Decimal("0")
+        except (ValueError, ArithmeticError, TypeError):
+            # Malformed payload from MCP — treat as unavailable rather
+            # than 500. We still preserve the DB-side P&L slice.
+            equity = balance = margin_used = margin_free = current_drawdown = None
+            mcp_status = "unavailable"
+
+    return AccountSummaryResponse(
+        equity=equity,
+        balance=balance,
+        margin_used=margin_used,
+        margin_free=margin_free,
+        current_drawdown=current_drawdown,
+        pnl_day=pnl_day,
+        pnl_week=pnl_week,
+        pnl_month=pnl_month,
+        mcp_status=mcp_status,
+        source_at=now,
+    )
+
+
+@router.get(
+    "/{project_id}/operativa/orders",
+    response_model=OperativaOrdersResponse,
+)
+async def list_operativa_orders(
+    project_id: uuid.UUID,
+    user: Annotated[User, Depends(current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    from_: Annotated[
+        datetime | None,
+        Query(
+            alias="from",
+            description="ISO datetime lower bound (default: now - 30d).",
+        ),
+    ] = None,
+    to: Annotated[
+        datetime | None,
+        Query(description="ISO datetime upper bound (default: now)."),
+    ] = None,
+    symbol: Annotated[str | None, Query(max_length=20)] = None,
+    side: Annotated[Literal["buy", "sell"] | None, Query()] = None,
+    result: Annotated[Literal["win", "loss"] | None, Query()] = None,
+    magic: Annotated[int | None, Query(ge=0, le=2**31 - 1)] = None,
+    status_: Annotated[str | None, Query(alias="status", max_length=30)] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0, le=10_000)] = 0,
+) -> OperativaOrdersResponse:
+    """Operativa: filtered, paginated history slice + aggregated metrics.
+
+    Window semantics:
+
+    * ``from`` / ``to`` (ISO datetimes) bracket the ``open_time`` axis.
+    * Defaults: ``from = now - 30d``, ``to = now`` — the canonical
+      "last month of activity" slice.
+
+    Filters AND together. ``result`` is interpreted as a sign predicate
+    on ``profit_net`` (``win`` → > 0, ``loss`` → < 0). Tenant-scoped:
+    cross-tenant returns 404 (project lookup) before any orders query
+    runs.
+
+    Response carries ``items`` (paged), ``total`` (count under the same
+    filters, no pagination), and ``metrics`` aggregated across the SAME
+    filter window (NOT just the page) so the dashboard cards reflect
+    the user-visible slice end-to-end.
+    """
+    await _load_project_or_404(project_id, user, session)
+
+    now = datetime.now(tz=UTC)
+    effective_from = from_ if from_ is not None else now - timedelta(days=30)
+    effective_to = to if to is not None else now
+    if effective_to < effective_from:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="`to` must be >= `from`",
+        )
+
+    repo = OrderRepository(session)
+    rows, total = await repo.list_filtered(
+        user_id=user.id,
+        project_id=project_id,
+        from_date=effective_from,
+        to_date=effective_to,
+        symbol=symbol.upper() if symbol else None,
+        side=side,
+        result=result,
+        magic=magic,
+        status=status_,
+        limit=limit,
+        offset=offset,
+    )
+
+    # Metrics aggregate over the SAME filter window — repository hands
+    # back closed-only rows, which is the metrics contract. The pure
+    # primitives (orders_metrics) already encode "Infinity" / None
+    # correctly so we forward unchanged.
+    metrics = await repo.aggregate_metrics(
+        user_id=user.id,
+        project_id=project_id,
+        from_date=effective_from,
+        to_date=effective_to,
+    )
+
+    return OperativaOrdersResponse(
+        items=[OperativaOrderRecord.model_validate(r, from_attributes=True) for r in rows],
+        total=total,
+        metrics=OperativaMetrics(
+            trades_total=metrics.trades_total,
+            win_rate=metrics.win_rate,
+            profit_factor=metrics.profit_factor,
+            avg_rr=metrics.avg_rr,
+            total_pnl=metrics.total_pnl,
+        ),
+    )
+
+
 # Re-exports kept on the module so future callers can ``from ... import
 # ApprovalRejected, ApprovalTimeout`` without reaching into the mcp_client
 # package directly.
 __all__ = [
+    "AccountSummaryResponse",
     "ApprovalRejected",
     "ApprovalTimeout",
+    "OperativaMetrics",
+    "OperativaOrderRecord",
+    "OperativaOrdersResponse",
     "OrderCreate",
     "OrderRecord",
     "router",
