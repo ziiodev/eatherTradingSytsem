@@ -413,6 +413,13 @@ function AgentSkillsPanel({
   const [loading, setLoading] = useState(true);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
+  // Confirm modal antes de desvincular — el botón X de cada pill no
+  // ejecuta la acción directamente; abre este modal con el nombre de la
+  // skill para evitar clicks accidentales.
+  const [confirmingDetach, setConfirmingDetach] = useState<{
+    skillId: string;
+    skillName: string;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -485,33 +492,46 @@ function AgentSkillsPanel({
           Aún no hay skills vinculadas a este agente.
         </p>
       ) : (
-        <ul className="flex flex-col gap-2" data-testid="attached-skills-list">
+        // Tarjeta-pill compacta por skill: flujo horizontal con wrap, así
+        // cada skill ocupa solo lo que necesita y caben varias por línea.
+        // Las notes (si existen) se muestran como tooltip nativo.
+        <ul
+          className="flex flex-wrap gap-2"
+          data-testid="attached-skills-list"
+        >
           {attached.map((row) => (
             <li
               key={row.binding_id}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--background))] px-3 py-2"
+              title={row.notes ?? undefined}
+              className="inline-flex items-center gap-2 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--background))] py-1 pl-2.5 pr-1"
             >
-              <div className="flex flex-wrap items-center gap-2">
-                <Link2 className="h-4 w-4 text-[rgb(var(--foreground-muted))]" />
-                <span className="text-sm font-medium">{row.name}</span>
-                <Badge variant="muted">{SKILL_TYPE_LABEL[row.type]}</Badge>
-                <Badge variant="muted">{SKILL_RUNTIME_LABEL[row.runtime]}</Badge>
-                {!row.is_active && <Badge variant="muted">Archivada</Badge>}
-                {row.notes && (
-                  <span className="text-xs text-[rgb(var(--foreground-muted))]">
-                    {row.notes}
-                  </span>
-                )}
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void detach(row.skill_id)}
+              <Link2 className="h-3.5 w-3.5 text-[rgb(var(--foreground-muted))]" />
+              <span className="text-sm font-medium">{row.name}</span>
+              <Badge variant="muted">{SKILL_TYPE_LABEL[row.type]}</Badge>
+              <Badge variant="muted">{SKILL_RUNTIME_LABEL[row.runtime]}</Badge>
+              {!row.is_active && <Badge variant="muted">Archivada</Badge>}
+              {row.notes && (
+                <span
+                  aria-hidden
+                  className="text-[10px] uppercase tracking-wide text-[rgb(var(--foreground-muted))]"
+                >
+                  ··
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() =>
+                  setConfirmingDetach({
+                    skillId: row.skill_id,
+                    skillName: row.name,
+                  })
+                }
                 aria-label={`Quitar skill ${row.name}`}
                 data-testid="detach-skill-button"
+                className="rounded-md p-1 text-[rgb(var(--foreground-muted))] transition-colors hover:bg-[rgb(var(--danger)/0.12)] hover:text-[rgb(var(--danger))] focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--danger))]"
               >
-                <X className="h-4 w-4" /> Quitar
-              </Button>
+                <X className="h-3.5 w-3.5" />
+              </button>
             </li>
           ))}
         </ul>
@@ -526,6 +546,46 @@ function AgentSkillsPanel({
           refresh();
         }}
       />
+
+      {/* Modal de confirmación al desvincular una skill. Patrón usado
+          en EditSkillDialog/ProjectAgentsPanel — coherencia visual. */}
+      <Dialog
+        open={confirmingDetach !== null}
+        onOpenChange={(next) => {
+          if (!next) setConfirmingDetach(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>¿Quitar la skill del agente?</DialogTitle>
+            <DialogDescription>
+              {confirmingDetach
+                ? `Vas a desvincular "${confirmingDetach.skillName}" de este agente. La skill no se elimina del catálogo, solo se quita esta asignación.`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmingDetach(null)}
+              data-testid="cancel-detach-skill"
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => {
+                if (confirmingDetach === null) return;
+                const id = confirmingDetach.skillId;
+                setConfirmingDetach(null);
+                void detach(id);
+              }}
+              data-testid="confirm-detach-skill"
+            >
+              <X className="h-4 w-4" /> Quitar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
