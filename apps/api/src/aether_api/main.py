@@ -12,6 +12,10 @@ Mounts:
 * ``/api/agents/*``                — see :mod:`aether_api.routers.agents`.
 * ``/api/skills/*``                — see :mod:`aether_api.routers.skills`.
 * ``/api/tools/*``                 — see :mod:`aether_api.routers.tools`.
+* ``/api/projects/{id}/q-tables``  — see :mod:`aether_api.routers.learning`.
+* ``/api/projects/{id}/episodic-memory`` — see :mod:`aether_api.routers.learning`.
+* ``/api/projects/{id}/semantic-memory`` — see :mod:`aether_api.routers.learning`.
+* ``/api/projects/{id}/sleep-runs/{run_id}/report`` — see :mod:`aether_api.sleep.routes`.
 * OpenAPI at ``/openapi.json`` (default location).
 
 Run with::
@@ -41,6 +45,7 @@ from aether_api.core.observability import init_observability
 from aether_api.core.settings import get_settings
 from aether_api.routers.agents import router as agents_router
 from aether_api.routers.audit_log import router as audit_log_router
+from aether_api.routers.learning import router as learning_router
 from aether_api.routers.me import router as me_router
 from aether_api.routers.me_mfa import router as me_mfa_router
 from aether_api.routers.projects import router as projects_router
@@ -372,6 +377,10 @@ def create_app() -> FastAPI:
     # always work.
     app.include_router(sleep_projects_router)
     app.include_router(sleep_config_versions_router)
+    # Sleep-learning read surface — Q-Tables / episodic / semantic memory.
+    # Added by the sleep-learning-loop change (Phase 9). Read-only; writes
+    # happen via the Sleep orchestrator and the sandboxed Worker ctx.
+    app.include_router(learning_router)
     # JWKS — published at the canonical /.well-known location for sister
     # services and the edge middleware to verify RS256 access tokens.
     app.include_router(jwks_router)

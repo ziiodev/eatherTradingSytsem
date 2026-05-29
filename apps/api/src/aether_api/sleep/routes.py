@@ -28,6 +28,9 @@ from aether_api.core.settings import get_settings
 from aether_api.db.session import get_session
 from aether_api.models.user import User
 from aether_api.repositories.project_repository import ProjectRepository
+from aether_api.repositories.sleep_report_repository import (
+    SleepReportRepository,
+)
 from aether_api.sleep.applier import (
     ConfigVersionInvalidStateError,
     ConfigVersionNotFoundError,
@@ -118,6 +121,25 @@ class TriggerSleepResponse(BaseModel):
     summary: str | None = None
     error: str | None = None
     config_version_id: uuid.UUID | None = None
+
+
+class SleepReportResponse(BaseModel):
+    """Outcome digest of one sleep run (1:1 with ``sleep_runs``).
+
+    Returned by ``GET /api/projects/{id}/sleep-runs/{run_id}/report`` —
+    added by the sleep-learning-loop change. ``payload`` aggregates the
+    structured outcome (Q-Table diff, ingested episodes, semantic rule
+    diffs, optional promoted ``config_versions.id``); ``summary_md`` is
+    the operator-friendly markdown digest.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    sleep_run_id: uuid.UUID
+    payload: dict[str, Any] = Field(default_factory=dict)
+    summary_md: str | None = None
+    created_at: datetime | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -254,6 +276,59 @@ async def get_sleep_run(
     )
 
 
+@projects_sleep_router.get(
+    "/{project_id}/sleep-runs/{run_id}/report",
+    response_model=SleepReportResponse,
+    tags=["sleep-phase", "learning"],
+)
+async def get_sleep_report(
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    user: Annotated[User, Depends(current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SleepReportResponse:
+    """Return the 1:1 ``sleep_reports`` row for ``run_id``.
+
+    Added by the sleep-learning-loop change. Tenancy is enforced via the
+    ``sleep_runs.project_id → projects.user_id`` JOIN inside the
+    repository, so cross-tenant access never sees the row. The router
+    additionally pre-checks ownership of ``project_id`` so the path
+    parameter is also validated.
+
+    404 (NOT 403) on:
+      * project not owned by caller
+      * sleep run does not belong to the project
+      * report row not yet written for this run
+    """
+    repo = ProjectRepository(session)
+    project = await repo.get_for_user(user.id, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="project not found"
+        )
+
+    # Path-shape guard: make sure ``run_id`` is actually under this project.
+    # Skipping this would still be safe (the repo JOIN catches it) but the
+    # 404 reason would be misleading ("report not found" vs. "run not in
+    # project"). We pay one cheap SELECT for cleaner semantics.
+    run_repo = SleepRunRepository(session)
+    run = await run_repo.get(run_id)
+    if run is None or run.project_id != project_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="sleep report not found"
+        )
+
+    report_repo = SleepReportRepository(session)
+    report = await report_repo.get_by_run_id(
+        user_id=user.id, sleep_run_id=run_id
+    )
+    if report is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="sleep report not found"
+        )
+    return SleepReportResponse.model_validate(report)
+
+
 # ---------------------------------------------------------------------------
 # /api/config-versions/{id}/...
 # ---------------------------------------------------------------------------
@@ -368,6 +443,7 @@ async def revert_config_version(
 
 
 __all__ = [
+    "SleepReportResponse",
     "config_versions_router",
     "projects_sleep_router",
 ]
