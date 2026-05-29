@@ -60,6 +60,12 @@ dependencies = [
     "opentelemetry-instrumentation-sqlalchemy>=0.48b0,<1.0",
     "opentelemetry-instrumentation-asgi>=0.48b0,<1.0",
     "prometheus-fastapi-instrumentator>=7.0,<8.0",
+    # Explicit pin for prometheus-client — the sleep-learning-loop metrics
+    # module (``aether_api.learning.metrics``) imports Counter/Gauge
+    # directly. The instrumentator pulls it in transitively but we name
+    # it here so a future drop of the instrumentator does not silently
+    # break the learning observability surface.
+    "prometheus-client>=0.20,<1.0",
     # Per-project Docker orchestration — aiodocker speaks the Engine HTTP
     # API over the tecnativa/docker-socket-proxy sidecar (see
     # docker-compose.yml). Pinned <1.0; the 0.x line is the only published

@@ -95,7 +95,20 @@ def _engine_with_handlers(handlers: dict[str, Any] | None = None) -> Engine:
 
 @pytest.fixture(autouse=True)
 def _enable_learning(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Flip the learning flag on for every test in this module.
+
+    Phase 11 promoted ``AETHER_LEARNING_ENABLED`` to a formal pydantic
+    setting backed by :func:`aether_api.core.settings.get_settings`,
+    which is ``lru_cache``-d. Setting the env alone is no longer
+    sufficient — we must invalidate the cache so the next ``Settings``
+    rebuild reads the freshly-monkeypatched value.
+    """
+    from aether_api.core.settings import get_settings
+
     monkeypatch.setenv("AETHER_LEARNING_ENABLED", "true")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 # ---------------------------------------------------------------------------
@@ -361,7 +374,10 @@ def test_noop_mode_disables_episodic_record(monkeypatch: pytest.MonkeyPatch) -> 
     return None / []. We assert the runtime error and that no handler
     was ever invoked (the dispatcher isn't even spun up).
     """
+    from aether_api.core.settings import get_settings
+
     monkeypatch.setenv("AETHER_LEARNING_ENABLED", "false")
+    get_settings.cache_clear()
     _RECORDED_EPISODES.clear()
 
     async def never_call(**_: Any) -> dict[str, Any]:
@@ -389,7 +405,10 @@ def test_noop_mode_disables_episodic_record(monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_noop_mode_qtable_get_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
     """``AETHER_LEARNING_ENABLED=false`` → ``ctx.qtable.get`` returns None."""
+    from aether_api.core.settings import get_settings
+
     monkeypatch.setenv("AETHER_LEARNING_ENABLED", "false")
+    get_settings.cache_clear()
     engine = _engine_with_handlers()
     src = "def on_tick(ctx):\n    return ctx.qtable.get({'k': 1})\n"
     result = engine.run_agent(

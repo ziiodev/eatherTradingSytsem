@@ -32,21 +32,20 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+from aether_api.core.settings import get_settings
 from aether_api.sandbox.ctx import AgentContext, McpEndpoint
 from aether_api.sandbox.rpc import RpcDispatcher, RpcHandlers, build_default_handlers
 
 
 def _learning_enabled_from_env() -> bool:
-    """Read the ``AETHER_LEARNING_ENABLED`` env flag.
+    """Return whether the sleep-learning loop is enabled for this process.
 
-    Treats the absence of the var as **disabled** so older deployments
-    that don't know about the flag boot into the safe NO-OP mode.
-    Accepts ``true`` / ``1`` / ``yes`` (case-insensitive) as ON.
+    Phase 11 of ``sdd/sleep-learning-loop`` promoted the underlying
+    ``AETHER_LEARNING_ENABLED`` env var to a formal pydantic setting; the
+    function name is kept for backwards compatibility with the existing
+    callers in this module.
     """
-    raw = os.environ.get("AETHER_LEARNING_ENABLED")
-    if raw is None:
-        return False
-    return raw.strip().lower() in {"true", "1", "yes", "on"}
+    return get_settings().learning_enabled
 
 
 #: Hard wall-clock deadline. RLIMIT_CPU=10s catches CPU; the 15s

@@ -45,7 +45,6 @@ runs the side-effect that drops the stale cache slot.
 from __future__ import annotations
 
 import logging
-import os
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -54,6 +53,11 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from aether_api.core.settings import get_settings
+from aether_api.learning.metrics import (
+    increment_q_table_promotion,
+    record_qtable_bytes,
+)
 from aether_api.learning.q_learning import q_update
 from aether_api.learning.qtable_versioning import classify_qtable_delta
 from aether_api.models.project import Project
@@ -99,16 +103,20 @@ ALPHA_SPECIAL: float = 0.35
 
 
 def is_learning_enabled() -> bool:
-    """Return True iff ``AETHER_LEARNING_ENABLED`` is set to a truthy value.
+    """Return True iff the sleep-learning loop is enabled for this process.
 
-    Matches :func:`aether_api.sandbox.engine._learning_enabled_from_env`
-    semantics so the flag has a single, consistent shape across the
-    codebase.
+    Backed by :attr:`aether_api.core.settings.Settings.learning_enabled`,
+    which pydantic-settings populates from the ``AETHER_LEARNING_ENABLED``
+    env var (case-insensitive ``true`` / ``1`` / ``yes`` / ``on``). Going
+    through settings — rather than reading ``os.environ`` here — keeps
+    the flag's contract centralised so the formal-flag promotion in
+    Phase 11 has a single source of truth.
+
+    Tests that mutate the env at runtime MUST call
+    ``get_settings.cache_clear()`` after the mutation; the existing
+    Phase 7 suite already does so for every gating test.
     """
-    raw = os.environ.get("AETHER_LEARNING_ENABLED")
-    if raw is None:
-        return False
-    return raw.strip().lower() in {"true", "1", "yes", "on"}
+    return get_settings().learning_enabled
 
 
 # ---------------------------------------------------------------------------
@@ -598,6 +606,19 @@ async def finalize_learning_step(
             # to readers.
             await savepoint.rollback()
             raise
+
+    # Phase 11 — observability. Runs AFTER the savepoint releases
+    # successfully so a rolled-back finalize never bumps the counter.
+    # Metric updates are best-effort: a Prometheus collector raising
+    # would otherwise mask the successful commit from the caller.
+    try:
+        increment_q_table_promotion(project.id, risk_class)
+        record_qtable_bytes(project.id, pass_result.new_table)
+    except Exception:  # noqa: BLE001 — metrics are best-effort.
+        logger.exception(
+            "sleep.learning_step: metrics emission raised; "
+            "commit already succeeded, ignoring"
+        )
 
     return LearningStepResult(
         q_table_id=q_row.id,

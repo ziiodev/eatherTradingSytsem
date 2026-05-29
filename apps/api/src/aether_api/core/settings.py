@@ -29,7 +29,14 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, PostgresDsn, SecretStr, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    Field,
+    PostgresDsn,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -327,6 +334,54 @@ class Settings(BaseSettings):
     #: a v1 project's episodic memory, narrow enough that the walk stays
     #: O(1) per Sleep Phase run regardless of long-tail state cardinality.
     learning_classifier_topk: int = 50
+
+    #: Master flag for the sleep-learning loop (Phase 11 of
+    #: ``sdd/sleep-learning-loop``). When False (v1 default):
+    #:
+    #: * The Sleep Phase orchestrator skips Step 5a/5b/5c — the deep-sleep
+    #:   path falls back to the legacy ``cv_repo.create`` write.
+    #: * The sandbox child binds the inert ``NoopQTable`` / ``NoopSemantic``
+    #:   / ``NoopEpisodic`` proxies on ``ctx`` — agent code that calls them
+    #:   gets the documented no-op behaviour, never a DB write.
+    #: * The lifespan ``warm_caches`` pass is skipped — projects start cold
+    #:   and the cache stays empty.
+    #:
+    #: Reads from the legacy ``AETHER_LEARNING_ENABLED`` env var first
+    #: (this is the historical knob Phase 7 shipped with) and falls back
+    #: to the shorter ``LEARNING_ENABLED`` for symmetry with the other
+    #: feature flags. Accepts the standard pydantic booleans
+    #: (``true`` / ``1`` / ``yes`` / ``on`` plus their falsy counterparts),
+    #: case-insensitive.
+    learning_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "AETHER_LEARNING_ENABLED",
+            "LEARNING_ENABLED",
+        ),
+    )
+
+    #: Soft-warn threshold (bytes) for a freshly-persisted ``q_tables`` row.
+    #: When the JSON payload of a Q-Table version exceeds this many bytes,
+    #: the learning metrics path emits a structured WARN log line
+    #: (``aether.qtable.size_threshold_breached``) carrying project_id +
+    #: bytes. Default is 50 MiB — the design budget for a long-tail v1
+    #: project. Tests override to a much smaller value so the threshold
+    #: can be exercised without piping megabytes through a fake.
+    learning_qtable_warn_bytes: int = 50 * 1024 * 1024
+
+    #: Token-bucket capacity for the cross-tenant write audit log. Each
+    #: distinct ``actor_user_id`` gets a bucket of this many warns per
+    #: refill window; over-limit attempts are still rejected by the
+    #: repository (``PermissionError``) but drop their structured log
+    #: line to keep stdout from being weaponised by a hostile caller.
+    learning_audit_rate_capacity: int = 10
+
+    #: Refill window (seconds) for the cross-tenant audit token bucket.
+    #: One token is added every ``capacity / window`` seconds; a fresh
+    #: actor starts with a full bucket. Default 60 s — short enough to
+    #: catch a sustained attack, long enough that legitimate operator
+    #: tooling never trips it.
+    learning_audit_rate_window_seconds: float = 60.0
 
     # ------------------------------------------------------------------
     # pydantic-settings config

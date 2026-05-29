@@ -96,6 +96,18 @@ class SleepReportRepository(BaseRepository):
         invariant.
         """
         if not await self._user_owns_sleep_run(user_id, sleep_run_id):
+            from aether_api.learning.audit import log_cross_tenant_attempt
+
+            await log_cross_tenant_attempt(
+                actor_user_id=user_id,
+                # ``sleep_reports`` is keyed by sleep_run_id; the
+                # audit log records that identifier in the same column
+                # used for project_id elsewhere (both are UUIDs and
+                # alerting rules don't need to distinguish).
+                target_project_id=sleep_run_id,
+                table_name="sleep_reports",
+                operation="insert",
+            )
             raise PermissionError(
                 f"user {user_id} does not own sleep_run {sleep_run_id}"
             )

@@ -85,6 +85,10 @@ async def test_lifespan_warm_healthy_and_failing_projects(
 
     monkeypatch.setattr(QTableRepository, "get_latest", selective_get_latest)
 
+    # Phase 11 — the warm pass is gated on settings.learning_enabled.
+    # The flag defaults False so a bootstrap env stays cold; this test
+    # specifically exercises the warm path, so flip it on for the run.
+    monkeypatch.setenv("AETHER_LEARNING_ENABLED", "true")
     get_settings.cache_clear()
     app = create_app()
 
@@ -122,3 +126,39 @@ async def test_lifespan_warm_healthy_and_failing_projects(
             assert healthy_proj.status == "active"
             # Failing project flipped.
             assert failing_proj.status == "maintenance"
+
+
+async def test_lifespan_warm_skipped_when_flag_off(
+    migrated_db: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Phase 11 of ``sdd/sleep-learning-loop`` — when
+    ``settings.learning_enabled`` is False, the lifespan MUST NOT warm
+    any project. ``app.state.learning_cache`` is still attached so
+    request handlers can rely on the attribute, but every per-project
+    slot starts empty.
+    """
+    import httpx
+    from aether_api.core.settings import get_settings
+    from aether_api.main import create_app
+    from asgi_lifespan import LifespanManager
+
+    user_id, healthy_pid, failing_pid = await _seed_two_projects()
+
+    monkeypatch.delenv("AETHER_LEARNING_ENABLED", raising=False)
+    get_settings.cache_clear()
+    assert get_settings().learning_enabled is False
+
+    app = create_app()
+    async with LifespanManager(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as client:
+            health = await client.get("/healthz")
+            assert health.status_code == 200, health.text
+
+        # Cache attribute exists but is empty.
+        cache = app.state.learning_cache
+        assert cache.get(user_id, healthy_pid) is None
+        assert cache.get(user_id, failing_pid) is None

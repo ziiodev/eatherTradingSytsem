@@ -144,6 +144,14 @@ class QTableRepository(BaseRepository):
         supplied — the Phase 1 model has no dedicated column.
         """
         if not await self._user_owns_project(user_id, project_id):
+            from aether_api.learning.audit import log_cross_tenant_attempt
+
+            await log_cross_tenant_attempt(
+                actor_user_id=user_id,
+                target_project_id=project_id,
+                table_name="q_tables",
+                operation="insert_version",
+            )
             raise PermissionError(
                 f"user {user_id} does not own project {project_id}"
             )

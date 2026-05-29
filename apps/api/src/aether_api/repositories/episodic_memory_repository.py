@@ -70,6 +70,14 @@ class EpisodicMemoryRepository(BaseRepository):
         to a malicious caller).
         """
         if not await self._user_owns_project(user_id, project_id):
+            from aether_api.learning.audit import log_cross_tenant_attempt
+
+            await log_cross_tenant_attempt(
+                actor_user_id=user_id,
+                target_project_id=project_id,
+                table_name="episodic_memory",
+                operation="insert",
+            )
             raise PermissionError(
                 f"user {user_id} does not own project {project_id}"
             )
@@ -98,6 +106,41 @@ class EpisodicMemoryRepository(BaseRepository):
         self.session.add(row)
         await self.session.flush()
         await self.session.refresh(row)
+
+        # Phase 11 — keep the ``aether_episodic_rows{project}`` Gauge
+        # warm. Throttled by ``EPISODIC_GAUGE_TTL_SECONDS`` per project
+        # so a tight insert loop only fires ``COUNT(*)`` once per window.
+        # Best-effort: metric failure MUST NOT roll back the insert.
+        try:
+            import time as _time
+
+            from aether_api.learning.metrics import (
+                _LAST_EPISODIC_UPDATE,
+                EPISODIC_GAUGE_TTL_SECONDS,
+                update_episodic_rows,
+            )
+
+            label = str(project_id)
+            last = _LAST_EPISODIC_UPDATE.get(label)
+            if last is None or (_time.monotonic() - last) >= EPISODIC_GAUGE_TTL_SECONDS:
+                count_stmt = (
+                    select(func.count())
+                    .select_from(EpisodicMemory)
+                    .where(EpisodicMemory.project_id == project_id)
+                )
+                row_count = int(
+                    (await self.session.execute(count_stmt)).scalar_one()
+                )
+                update_episodic_rows(project_id, row_count, force=True)
+        except Exception:  # noqa: BLE001 — metrics best-effort.
+            import logging as _logging
+
+            _logging.getLogger(__name__).debug(
+                "episodic_memory.insert: gauge update failed; "
+                "row already persisted",
+                exc_info=True,
+            )
+
         return row
 
     # ------------------------------------------------------------------
@@ -165,6 +208,14 @@ class EpisodicMemoryRepository(BaseRepository):
         # project owner once and bail if it doesn't match.
         owns = await self._user_owns_project(user_id, project_id)
         if not owns:
+            from aether_api.learning.audit import log_cross_tenant_attempt
+
+            await log_cross_tenant_attempt(
+                actor_user_id=user_id,
+                target_project_id=project_id,
+                table_name="episodic_memory",
+                operation="mark_special",
+            )
             raise PermissionError(
                 f"user {user_id} does not own project {project_id}"
             )

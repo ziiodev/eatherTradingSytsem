@@ -67,6 +67,17 @@ from aether_api.sleep.routes import (
 #: the field-level cap in ``validate_logica_shape`` is the precise one.
 AGENT_WRITE_BODY_LIMIT_BYTES: Final[int] = 320 * 1024
 
+
+class _LearningWarmSkipped(Exception):
+    """Sentinel raised inside the lifespan to short-circuit the learning
+    recovery loader when ``settings.learning_enabled`` is False.
+
+    Lives at module scope (not nested inside ``lifespan``) so the
+    ``except`` clause that swallows it can be named without falling
+    through to the broad ``Exception`` branch below it. NOT part of the
+    public API — never raise this from outside :func:`lifespan`.
+    """
+
 #: Paths whose write methods are body-size-guarded. Listed explicitly so the
 #: guard never accidentally fires on auth or projects endpoints, which have
 #: their own (smaller) field budgets owned by their own changes.
@@ -177,6 +188,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # episodic window / semantic rules back into the in-process
     # ``LearningCache`` so the Worker hot path never starts cold.
     #
+    # Phase 11 (this change): the entire warm pass is gated on
+    # ``settings.learning_enabled``. When False, the cache is still
+    # constructed and attached to ``app.state`` (so request handlers can
+    # rely on the attribute existing) but no projects are warmed — the
+    # cache stays empty and the Worker hot path sees nothing.
+    #
     # Failure isolation: a single project failing to warm DOES NOT
     # abort the loader for the others. Failing projects are flipped to
     # ``status='maintenance'`` and a WARN is logged; the lifespan
@@ -200,6 +217,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Attach to ``app.state`` so request handlers can reach the
         # singleton without importing the module-level binding.
         app.state.learning_cache = learning_cache
+
+        if not settings.learning_enabled:
+            # Phase 11 gating — short-circuit BEFORE the SELECT so a
+            # bootstrap env with the flag off does no learning work at
+            # all (no DB read, no warm pass, no maintenance flips).
+            _logging.getLogger(__name__).info(
+                "learning.warm: skipped (settings.learning_enabled=False)"
+            )
+            raise _LearningWarmSkipped
 
         session_maker = get_session_maker()
         async with session_maker() as warm_session:
@@ -258,6 +284,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         err_str,
                     )
                 await fail_session.commit()
+    except _LearningWarmSkipped:
+        # Sentinel branch — the flag is off, the warm pass was skipped
+        # intentionally. ``app.state.learning_cache`` is already set so
+        # callers can read it without checking for absence.
+        pass
     except Exception:  # noqa: BLE001 — recovery is best-effort.
         import logging as _logging
 
