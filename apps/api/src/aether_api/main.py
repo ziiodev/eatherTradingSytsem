@@ -45,6 +45,7 @@ from aether_api.core.observability import init_observability
 from aether_api.core.settings import get_settings
 from aether_api.routers.agents import router as agents_router
 from aether_api.routers.audit_log import router as audit_log_router
+from aether_api.routers.chat import router as chat_router
 from aether_api.routers.learning import router as learning_router
 from aether_api.routers.me import router as me_router
 from aether_api.routers.me_mfa import router as me_mfa_router
@@ -448,6 +449,14 @@ def create_app() -> FastAPI:
     # Added by the sleep-learning-loop change (Phase 9). Read-only; writes
     # happen via the Sleep orchestrator and the sandboxed Worker ctx.
     app.include_router(learning_router)
+    # Project Chat — operator↔assistant SSE surface. Mounted under the
+    # same /api/projects prefix; gated at the router level by
+    # ``settings.chat_enabled`` AND a configured Anthropic API key (the
+    # streaming endpoint emits 500 CHAT_NOT_CONFIGURED if the key is
+    # absent). The frontend reads ``GET /api/health`` to decide whether
+    # to render the chat affordance.
+    if settings.chat_enabled:
+        app.include_router(chat_router)
     # Operativa WebSocket — push surface for the operator dashboard.
     # Feature-flagged: when ``AETHER_OPERATIVA_WS_ENABLED`` is False
     # the route is NOT mounted at all (upgrade attempts get 404). See
