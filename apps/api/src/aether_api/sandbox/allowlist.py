@@ -59,6 +59,11 @@ ALLOWED_TOP_LEVEL: Final[frozenset[str]] = frozenset(
         # the module to look up type symbols if it wants.
         "aether_api.sandbox.learning_ctx",
         "aether_api.sandbox.rpc",
+        # Operativa ctx — frozen ``OrdersProxy`` + ``NoopOrders``. Same
+        # rationale: the child bootstrap imports it to assemble
+        # ``ctx.orders``; user agent code can also reach the type
+        # symbols for isinstance checks.
+        "aether_api.sandbox.orders_ctx",
     }
 )
 

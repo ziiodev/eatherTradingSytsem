@@ -384,6 +384,29 @@ class Settings(BaseSettings):
     learning_audit_rate_window_seconds: float = 60.0
 
     # ------------------------------------------------------------------
+    # Operativa write proxy — sandbox-side OrdersProxy injection.
+    # See ``sdd/project-operativa/spec/agent-sandbox-delta`` (#2119).
+    # ------------------------------------------------------------------
+    #: Master flag for the Operativa write proxy. When True (v1 default),
+    #: every sandboxed Worker invocation receives a ``ctx.orders``
+    #: :class:`OrdersProxy` whose three methods (``record_open`` /
+    #: ``record_modify`` / ``record_close``) route through the existing
+    #: parent ↔ child RPC pipe to the ``orders`` table. When False, the
+    #: child binds the inert ``NoopOrders`` variant — any method raises
+    #: ``RuntimeError("operativa proxy disabled")`` so a Worker that
+    #: depends on the proxy fails loudly rather than silently dropping
+    #: writes. Mirrors the ``learning_enabled`` pattern from
+    #: ``sleep-learning-loop``: env-name alias kept stable so deployments
+    #: can toggle with ``AETHER_OPERATIVA_PROXY_ENABLED``.
+    operativa_proxy_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "AETHER_OPERATIVA_PROXY_ENABLED",
+            "OPERATIVA_PROXY_ENABLED",
+        ),
+    )
+
+    # ------------------------------------------------------------------
     # pydantic-settings config
     # ------------------------------------------------------------------
     model_config = SettingsConfigDict(

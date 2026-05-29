@@ -284,17 +284,26 @@ def child_main(read_conn: Any, write_conn: Any, rpc_conn: Any | None = None) -> 
             SemanticProxy,
         )
         from aether_api.sandbox.mcp_proxy import McpProxy
+        from aether_api.sandbox.orders_ctx import NoopOrders, OrdersProxy
 
         ctx_obj.mcp_proxy = McpProxy(ctx_obj.mcp, dry_run=ctx_obj.dry_run)
 
-        # --- Learning proxies. Even when learning is disabled we attach
-        #     the Noop variants so user code can call ``ctx.qtable.get``
-        #     etc. unconditionally — the contract is "always present,
-        #     sometimes inert".
-        if getattr(ctx_obj, "learning_enabled", False) and rpc_conn is not None:
+        # --- Learning + operativa proxies. Even when their respective
+        #     flags are off we attach the Noop variants so user code can
+        #     call ``ctx.qtable.get`` / ``ctx.orders.record_open`` etc.
+        #     unconditionally — the contract is "always present, sometimes
+        #     inert". The RpcClient is shared across all proxies; the
+        #     dispatcher in the parent routes by method name.
+        learning_on = bool(getattr(ctx_obj, "learning_enabled", False))
+        operativa_on = bool(getattr(ctx_obj, "operativa_enabled", False))
+        if (learning_on or operativa_on) and rpc_conn is not None:
             from aether_api.sandbox.rpc import RpcClient
 
             rpc_client = RpcClient(rpc_conn)
+        else:
+            rpc_client = None
+
+        if learning_on and rpc_client is not None:
             ctx_obj.qtable = QTableProxy(
                 _rpc=rpc_client,
                 user_id=ctx_obj.user_id,
@@ -322,6 +331,20 @@ def child_main(read_conn: Any, write_conn: Any, rpc_conn: Any | None = None) -> 
             ctx_obj.episodic = NoopEpisodic(
                 user_id=ctx_obj.user_id,
                 project_id=ctx_obj.project_id,
+            )
+
+        if operativa_on and rpc_client is not None:
+            ctx_obj.orders = OrdersProxy(
+                _rpc=rpc_client,
+                user_id=ctx_obj.user_id,
+                project_id=ctx_obj.project_id,
+                agent_id=ctx_obj.agent_id,
+            )
+        else:
+            ctx_obj.orders = NoopOrders(
+                user_id=ctx_obj.user_id,
+                project_id=ctx_obj.project_id,
+                agent_id=ctx_obj.agent_id,
             )
 
         result = fn(ctx_obj)

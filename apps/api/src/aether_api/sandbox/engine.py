@@ -48,6 +48,19 @@ def _learning_enabled_from_env() -> bool:
     return get_settings().learning_enabled
 
 
+def _operativa_enabled_from_env() -> bool:
+    """Return whether the Operativa write proxy is enabled for this process.
+
+    Phase 2 of ``sdd/project-operativa`` introduced the
+    ``AETHER_OPERATIVA_PROXY_ENABLED`` env var (default ``true``) — when
+    True the child binds a live :class:`OrdersProxy`; when False it
+    binds :class:`NoopOrders` instead. Settings-backed so tests can
+    monkeypatch + invalidate the cache the same way they do for
+    ``learning_enabled``.
+    """
+    return get_settings().operativa_proxy_enabled
+
+
 #: Hard wall-clock deadline. RLIMIT_CPU=10s catches CPU; the 15s
 #: wall-clock catches sleeps / blocking I/O.
 DEFAULT_WALL_CLOCK_SECONDS = 15.0
@@ -131,6 +144,7 @@ def _build_ctx(
         mode=mode,
         dry_run=dry_run,
         learning_enabled=_learning_enabled_from_env(),
+        operativa_enabled=_operativa_enabled_from_env(),
     )
 
 
@@ -244,18 +258,26 @@ class Engine:
             name=f"aether-sandbox-{run_id}",
         )
 
-        # If learning is on, spin a dispatcher thread BEFORE start() so the
-        # child can immediately call back without racing the parent.
+        # If learning OR operativa is on, spin a dispatcher thread BEFORE
+        # start() so the child can immediately call back without racing
+        # the parent. The dispatcher is shared — both proxy families
+        # multiplex over the single duplex pipe, routed by method name.
         dispatcher: RpcDispatcher | None = None
-        if ctx.learning_enabled:
+        if ctx.learning_enabled or ctx.operativa_enabled:
             try:
                 user_uuid = uuid.UUID(ctx.user_id)
                 project_uuid = uuid.UUID(ctx.project_id)
+                agent_uuid: uuid.UUID | None
+                try:
+                    agent_uuid = uuid.UUID(ctx.agent_id) if ctx.agent_id else None
+                except (TypeError, ValueError):
+                    agent_uuid = None
             except (TypeError, ValueError):
-                # Non-UUID identifiers (e.g. a unit test with strings)
-                # disable RPC outright — the child's NoopEpisodic will
-                # raise on .record() and reads will return None.
+                # Non-UUID tenant identifiers (e.g. a unit test with
+                # strings) disable RPC outright — the child's Noop
+                # variants will raise on writes and reads return None.
                 ctx.learning_enabled = False
+                ctx.operativa_enabled = False
             else:
                 handlers_map = self._rpc_handlers_override or (
                     build_default_handlers(
@@ -269,6 +291,7 @@ class Engine:
                         user_id=user_uuid,
                         project_id=project_uuid,
                         handlers=handlers_map,
+                        agent_id=agent_uuid,
                     ),
                     name=f"aether-rpc-{run_id}",
                 )

@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import logging
 import threading
 import traceback
@@ -152,28 +153,57 @@ SessionFactory = Callable[[], AsyncSession] | async_sessionmaker[AsyncSession]
 AsyncHandler = Callable[..., Awaitable[Any]]
 
 
+def _handler_accepts_kwarg(handler: AsyncHandler, name: str) -> bool:
+    """Return True iff ``handler`` declares ``name`` (or has ``**kwargs``).
+
+    Used by :meth:`RpcHandlers.dispatch` to decide whether to inject
+    ``agent_id`` into a given handler. Legacy learning handlers
+    (qtable / semantic / episodic) don't list ``agent_id``; the new
+    operativa handlers do.
+    """
+    try:
+        sig = inspect.signature(handler)
+    except (TypeError, ValueError):
+        # C-extensions / builtins — assume they tolerate the kwarg.
+        return True
+    for param in sig.parameters.values():
+        if param.kind is inspect.Parameter.VAR_KEYWORD:
+            return True
+        if param.name == name:
+            return True
+    return False
+
+
 @dataclass
 class RpcHandlers:
     """Registry of method-name → async handler.
 
-    Handlers receive the BOUND ``(user_id, project_id)`` plus the
-    keyword args from the child's payload. They MUST return JSON-ish
+    Handlers receive the BOUND ``(user_id, project_id, agent_id)`` plus
+    the keyword args from the child's payload. They MUST return JSON-ish
     primitives (dict / list / str / int / float / None) so the child
     can pickle them straight back without dragging the ORM along.
+
+    ``agent_id`` is OPTIONAL — the original learning RPC contract
+    pre-dates it; only the operativa handlers (``orders.record_*``)
+    consume it. When ``agent_id is None`` the dispatcher OMITS the kwarg
+    altogether so legacy handler signatures (qtable / semantic /
+    episodic) stay source-compatible.
     """
 
     user_id: uuid.UUID
     project_id: uuid.UUID
     handlers: dict[str, AsyncHandler]
+    agent_id: uuid.UUID | None = None
 
     async def dispatch(self, method: str, payload: dict[str, Any]) -> Any:
         """Look up ``method`` and invoke it with the bound IDs.
 
-        ``payload`` may include ``user_id`` / ``project_id`` keys — they
-        are **stripped and ignored** here. The handler always sees the
-        parent-recorded tuple. This is the defence-in-depth check the
-        spec calls out: even if a future bug let the child re-bind its
-        proxy IDs, the parent never trusts them.
+        ``payload`` may include ``user_id`` / ``project_id`` /
+        ``agent_id`` keys — they are **stripped and ignored** here. The
+        handler always sees the parent-recorded tuple. This is the
+        defence-in-depth check the spec calls out: even if a future bug
+        let the child re-bind its proxy IDs, the parent never trusts
+        them.
         """
         handler = self.handlers.get(method)
         if handler is None:
@@ -182,11 +212,19 @@ class RpcHandlers:
         # Strip any tenancy-looking keys; we use our own bound tuple.
         kwargs.pop("user_id", None)
         kwargs.pop("project_id", None)
-        return await handler(
-            user_id=self.user_id,
-            project_id=self.project_id,
-            **kwargs,
-        )
+        kwargs.pop("agent_id", None)
+        # Only pass ``agent_id`` to handlers that declare it (introspect
+        # once). Legacy learning handlers (qtable / semantic / episodic)
+        # don't list it; orders handlers do. This keeps the legacy
+        # surface source-compatible while letting new handlers consume
+        # the bound agent identity.
+        injected: dict[str, Any] = {
+            "user_id": self.user_id,
+            "project_id": self.project_id,
+        }
+        if _handler_accepts_kwarg(handler, "agent_id"):
+            injected["agent_id"] = self.agent_id
+        return await handler(**injected, **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -511,9 +549,250 @@ def build_default_handlers(
             with contextlib.suppress(Exception):
                 await session.close()
 
+    # ---------------------------------------------------------------------
+    # Operativa write handlers — sandbox-side ``OrdersProxy`` route here.
+    # See ``sdd/project-operativa/spec/agent-sandbox-delta`` (#2119).
+    # ---------------------------------------------------------------------
+
+    from decimal import Decimal as _Decimal
+
+    from aether_api.models.order import Order as _OrderModel
+
+    def _to_decimal(value: Any) -> _Decimal | None:
+        if value is None:
+            return None
+        if isinstance(value, _Decimal):
+            return value
+        return _Decimal(str(value))
+
+    def _to_datetime(value: Any) -> Any:
+        from datetime import UTC as _UTC
+        from datetime import datetime as _dt
+
+        if value is None:
+            return _dt.now(tz=_UTC)
+        if isinstance(value, _dt):
+            return value
+        if isinstance(value, str):
+            # ``fromisoformat`` accepts the shape ``OrdersProxy`` ships.
+            return _dt.fromisoformat(value)
+        raise RpcError(f"unsupported close_time type: {type(value).__name__}")
+
+    async def _audit_cross_tenant(
+        *,
+        actor_user_id: uuid.UUID,
+        target_project_id: uuid.UUID,
+        operation: str,
+    ) -> None:
+        """Best-effort audit + PermissionError pair.
+
+        Mirrors the shape used by the learning repositories
+        (q_table / episodic / semantic / sleep_report): emit a
+        structured WARN line via the rate-limited bucket, then raise so
+        the caller path is uniform.
+        """
+        from aether_api.learning.audit import log_cross_tenant_attempt
+
+        await log_cross_tenant_attempt(
+            actor_user_id=actor_user_id,
+            target_project_id=target_project_id,
+            table_name="orders",
+            operation=operation,
+        )
+
+    async def orders_record_open(
+        *,
+        user_id: uuid.UUID,
+        project_id: uuid.UUID,
+        agent_id: uuid.UUID | None,
+        ticket: str,
+        symbol: str,
+        side: str,
+        volume: Any,
+        open_price: Any,
+        sl: Any,
+        tp: Any = None,
+        magic: int | None = None,
+        comment: str | None = None,
+    ) -> dict[str, Any]:
+        from aether_api.repositories.order_repository import OrderRepository
+
+        session = _open_session()
+        try:
+            async with session:
+                repo = OrderRepository(session)
+                fields: dict[str, Any] = {
+                    "agent_id": agent_id,
+                    "symbol": symbol,
+                    "side": side,
+                    "volume": _to_decimal(volume),
+                    "open_price": _to_decimal(open_price),
+                    "sl": _to_decimal(sl),
+                    "tp": _to_decimal(tp),
+                    "magic": magic,
+                    "comment": comment,
+                    "status": "filled",
+                }
+                row = await repo.upsert_by_ticket(
+                    user_id=user_id,
+                    project_id=project_id,
+                    ticket=ticket,
+                    fields=fields,
+                )
+                if row is None:
+                    await _audit_cross_tenant(
+                        actor_user_id=user_id,
+                        target_project_id=project_id,
+                        operation="record_open",
+                    )
+                    raise PermissionError(
+                        "orders.record_open: cross-tenant or invalid project"
+                    )
+                await session.commit()
+                return {
+                    "id": str(row.id),
+                    "ticket": ticket,
+                    "status": row.status,
+                }
+        finally:
+            with contextlib.suppress(Exception):
+                await session.close()
+
+    async def orders_record_modify(
+        *,
+        user_id: uuid.UUID,
+        project_id: uuid.UUID,
+        agent_id: uuid.UUID | None,  # noqa: ARG001 — bound but not stored
+        ticket: str,
+        sl: Any = None,
+        tp: Any = None,
+        comment: str | None = None,
+    ) -> dict[str, Any]:
+        from sqlalchemy import select as _select
+
+        session = _open_session()
+        try:
+            async with session:
+                # Tenant gate: ticket -> row via JOIN to projects.user_id.
+                # We replicate the same check the OrderRepository helper
+                # does (``_assert_user_owns_project``) — cross-tenant
+                # attempts must NOT update.
+                try:
+                    ticket_int = int(ticket)
+                except (TypeError, ValueError) as exc:
+                    raise RpcError(f"invalid ticket: {ticket!r}") from exc
+
+                stmt = _select(_OrderModel).where(
+                    _OrderModel.project_id == project_id,
+                    _OrderModel.user_id == user_id,
+                    _OrderModel.mt5_ticket == ticket_int,
+                )
+                result = await session.execute(stmt)
+                row = result.scalar_one_or_none()
+                if row is None:
+                    # Either the ticket doesn't exist, or the user
+                    # doesn't own the project. Both routes treated as
+                    # cross-tenant for the audit trail — we can't
+                    # distinguish "doesn't exist" from "owned by
+                    # somebody else" without leaking.
+                    await _audit_cross_tenant(
+                        actor_user_id=user_id,
+                        target_project_id=project_id,
+                        operation="record_modify",
+                    )
+                    raise PermissionError(
+                        "orders.record_modify: cross-tenant or ticket not found"
+                    )
+                if sl is not None:
+                    sl_dec = _to_decimal(sl)
+                    if sl_dec is None:
+                        raise RpcError("sl coerced to None unexpectedly")
+                    row.sl = sl_dec
+                if tp is not None:
+                    row.tp = _to_decimal(tp)
+                if comment is not None:
+                    row.comment = comment
+                await session.flush()
+                await session.commit()
+                return {
+                    "id": str(row.id),
+                    "ticket": ticket,
+                    "status": row.status,
+                }
+        finally:
+            with contextlib.suppress(Exception):
+                await session.close()
+
+    async def orders_record_close(
+        *,
+        user_id: uuid.UUID,
+        project_id: uuid.UUID,
+        agent_id: uuid.UUID | None,  # noqa: ARG001 — bound but not stored
+        ticket: str,
+        close_price: Any,
+        close_time: Any = None,
+        commission: Any = None,
+        swap: Any = None,
+        profit_gross: Any = None,
+        profit_net: Any = None,
+        comment: str | None = None,
+    ) -> dict[str, Any]:
+        from sqlalchemy import select as _select
+
+        session = _open_session()
+        try:
+            async with session:
+                try:
+                    ticket_int = int(ticket)
+                except (TypeError, ValueError) as exc:
+                    raise RpcError(f"invalid ticket: {ticket!r}") from exc
+
+                stmt = _select(_OrderModel).where(
+                    _OrderModel.project_id == project_id,
+                    _OrderModel.user_id == user_id,
+                    _OrderModel.mt5_ticket == ticket_int,
+                )
+                result = await session.execute(stmt)
+                row = result.scalar_one_or_none()
+                if row is None:
+                    await _audit_cross_tenant(
+                        actor_user_id=user_id,
+                        target_project_id=project_id,
+                        operation="record_close",
+                    )
+                    raise PermissionError(
+                        "orders.record_close: cross-tenant or ticket not found"
+                    )
+                row.status = "closed"
+                row.close_price = _to_decimal(close_price)
+                row.close_time = _to_datetime(close_time)
+                if commission is not None:
+                    row.commission = _to_decimal(commission)
+                if swap is not None:
+                    row.swap = _to_decimal(swap)
+                if profit_gross is not None:
+                    row.profit_gross = _to_decimal(profit_gross)
+                if profit_net is not None:
+                    row.profit_net = _to_decimal(profit_net)
+                if comment is not None:
+                    row.comment = comment
+                await session.flush()
+                await session.commit()
+                return {
+                    "id": str(row.id),
+                    "ticket": ticket,
+                    "status": row.status,
+                }
+        finally:
+            with contextlib.suppress(Exception):
+                await session.close()
+
     return {
         "qtable.get": qtable_get,
         "qtable.suggest": qtable_suggest,
         "semantic.list": semantic_list,
         "episodic.record": episodic_record,
+        "orders.record_open": orders_record_open,
+        "orders.record_modify": orders_record_modify,
+        "orders.record_close": orders_record_close,
     }

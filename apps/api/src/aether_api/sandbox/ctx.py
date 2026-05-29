@@ -87,3 +87,12 @@ class AgentContext:
     # which the child constructs locally. See
     # :func:`aether_api.sandbox.child.child_main` for the assembly site.
     learning_enabled: bool = False
+
+    # --- Operativa-proxy enabled flag. When False, the child binds the
+    # NO-OP :class:`aether_api.sandbox.orders_ctx.NoopOrders` variant —
+    # any ``ctx.orders.record_*`` call raises
+    # ``RuntimeError("operativa proxy disabled")``. When True, the child
+    # constructs (or reuses) an :class:`aether_api.sandbox.rpc.RpcClient`
+    # and wraps it in :class:`aether_api.sandbox.orders_ctx.OrdersProxy`.
+    # See ``sdd/project-operativa/spec/agent-sandbox-delta`` (#2119).
+    operativa_enabled: bool = False
