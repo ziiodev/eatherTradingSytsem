@@ -10,7 +10,6 @@
 
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
-import { ArrowLeft } from "lucide-react";
 
 import { ApiError } from "@/lib/api";
 import {
@@ -35,7 +34,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { LearningNav } from "@/components/projects/LearningNav";
 
 export default function SleepRunsListPage({
   params,
@@ -72,14 +70,7 @@ export default function SleepRunsListPage({
 
   return (
     <section className="flex flex-col gap-4">
-      <Link
-        href={`/proyectos/${projectId}`}
-        className="inline-flex items-center gap-1 text-sm text-[rgb(var(--foreground-muted))] hover:text-[rgb(var(--foreground))]"
-      >
-        <ArrowLeft className="h-3 w-3" /> Volver al proyecto
-      </Link>
-      <h1 className="text-2xl font-semibold tracking-tight">Sleep Runs</h1>
-      <LearningNav projectId={projectId} />
+      <h2 className="text-2xl font-semibold tracking-tight">Sleep Runs</h2>
 
       <Card>
         <CardHeader>

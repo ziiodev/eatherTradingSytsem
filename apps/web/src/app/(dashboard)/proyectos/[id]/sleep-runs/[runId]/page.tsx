@@ -46,7 +46,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { LearningNav } from "@/components/projects/LearningNav";
 
 interface ImprovementEntry {
   title?: string;
@@ -154,7 +153,6 @@ export default function SleepRunReportPage({
         run={run}
         overallScore={overallScore}
       />
-      <LearningNav projectId={projectId} />
 
       <AuditorMetricsCard metrics={auditorMetrics} />
       <WorkerInsightsCard insights={workerInsights} />
@@ -200,9 +198,9 @@ function Header({
       className="flex flex-wrap items-center gap-3"
       data-testid="report-header"
     >
-      <h1 className="text-2xl font-semibold tracking-tight">
+      <h2 className="text-2xl font-semibold tracking-tight">
         Sleep Run · {SLEEP_PHASE_LABEL[run.run.phase_type]}
-      </h1>
+      </h2>
       <Badge variant={overallScoreVariant(overallScore)}>
         {overallScore !== null
           ? `score ${overallScore.toFixed(2)}`

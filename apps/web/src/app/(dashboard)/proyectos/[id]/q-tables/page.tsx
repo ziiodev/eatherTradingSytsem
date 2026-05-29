@@ -16,9 +16,7 @@
  * orchestrator transaction (sleep-learning-loop Phase 7).
  */
 
-import Link from "next/link";
 import { use, useEffect, useMemo, useState } from "react";
-import { ArrowLeft } from "lucide-react";
 
 import { ApiError } from "@/lib/api";
 import {
@@ -45,7 +43,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { LearningNav } from "@/components/projects/LearningNav";
 
 export default function QTablesPage({
   params,
@@ -139,7 +136,6 @@ export default function QTablesPage({
   if (notFound) {
     return (
       <section className="flex flex-col gap-4">
-        <BackLink projectId={projectId} />
         <p className="text-sm">Proyecto no encontrado.</p>
       </section>
     );
@@ -147,11 +143,9 @@ export default function QTablesPage({
 
   return (
     <section className="flex flex-col gap-4">
-      <BackLink projectId={projectId} />
       <header className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">Q-Tables</h1>
+        <h2 className="text-2xl font-semibold tracking-tight">Q-Tables</h2>
       </header>
-      <LearningNav projectId={projectId} />
 
       {loading ? (
         <p className="text-sm text-[rgb(var(--foreground-muted))]">Cargando…</p>
@@ -381,17 +375,6 @@ function EmptyState(): React.JSX.Element {
         completar el primer sueño profundo con aprendizaje habilitado.
       </CardContent>
     </Card>
-  );
-}
-
-function BackLink({ projectId }: { projectId: string }): React.JSX.Element {
-  return (
-    <Link
-      href={`/proyectos/${projectId}`}
-      className="inline-flex items-center gap-1 text-sm text-[rgb(var(--foreground-muted))] hover:text-[rgb(var(--foreground))]"
-    >
-      <ArrowLeft className="h-3 w-3" /> Volver al proyecto
-    </Link>
   );
 }
 

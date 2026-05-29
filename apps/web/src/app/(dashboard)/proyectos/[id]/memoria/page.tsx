@@ -11,9 +11,7 @@
  * ctx, and semantic rules are promoted by the deep-sleep orchestrator.
  */
 
-import Link from "next/link";
 import { use, useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft } from "lucide-react";
 
 import { ApiError } from "@/lib/api";
 import {
@@ -47,7 +45,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { LearningNav } from "@/components/projects/LearningNav";
 
 const DEFAULT_WINDOW_DAYS = 7;
 const PAGE_SIZE = 50;
@@ -72,9 +69,7 @@ export default function MemoriaPage({
 
   return (
     <section className="flex flex-col gap-4">
-      <BackLink projectId={projectId} />
-      <h1 className="text-2xl font-semibold tracking-tight">Memoria</h1>
-      <LearningNav projectId={projectId} />
+      <h2 className="text-2xl font-semibold tracking-tight">Memoria</h2>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
         <TabsList>
@@ -437,13 +432,3 @@ function formatDate(iso: string | null): string {
   }
 }
 
-function BackLink({ projectId }: { projectId: string }): React.JSX.Element {
-  return (
-    <Link
-      href={`/proyectos/${projectId}`}
-      className="inline-flex items-center gap-1 text-sm text-[rgb(var(--foreground-muted))] hover:text-[rgb(var(--foreground))]"
-    >
-      <ArrowLeft className="h-3 w-3" /> Volver al proyecto
-    </Link>
-  );
-}
