@@ -124,7 +124,7 @@ async def test_live_bus_subscriber_lifecycle_starts_and_cancels_task(migrated_db
     fake = _FakeMCP()
     bus = LiveBus(
         get_session_maker(),
-        mcp_client_factory=lambda _project: fake,  # type: ignore[arg-type, return-value]
+        mcp_client_factory=lambda _project: fake,
         positions_poll_seconds=0.05,
         reconcile_poll_seconds=10.0,
         heartbeat_seconds=10.0,
@@ -168,7 +168,7 @@ async def test_live_bus_queue_overflow_drops_oldest(migrated_db: str) -> None:
     fake = _FakeMCP()
     bus = LiveBus(
         get_session_maker(),
-        mcp_client_factory=lambda _project: fake,  # type: ignore[arg-type, return-value]
+        mcp_client_factory=lambda _project: fake,
         positions_poll_seconds=10.0,
         reconcile_poll_seconds=10.0,
         heartbeat_seconds=10.0,
@@ -207,7 +207,7 @@ async def test_live_bus_mcp_outage_emits_status_event(migrated_db: str) -> None:
     fake.raise_unreachable = True
     bus = LiveBus(
         get_session_maker(),
-        mcp_client_factory=lambda _project: fake,  # type: ignore[arg-type, return-value]
+        mcp_client_factory=lambda _project: fake,
         positions_poll_seconds=0.05,
         reconcile_poll_seconds=10.0,
         heartbeat_seconds=10.0,
@@ -576,7 +576,7 @@ async def test_ws_owner_handshake_accepts_and_sees_event(monkeypatch, migrated_d
 
     short_bus = LiveBus(
         get_session_maker(),
-        mcp_client_factory=lambda _project: fake,  # type: ignore[arg-type, return-value]
+        mcp_client_factory=lambda _project: fake,
         positions_poll_seconds=0.05,
         reconcile_poll_seconds=10.0,
         heartbeat_seconds=0.1,
