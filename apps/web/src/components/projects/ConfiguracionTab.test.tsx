@@ -1,8 +1,11 @@
 /**
- * ConfiguracionTab tests — once the project has loaded the four inner tabs
- * (General / Infraestructura / Operativa / Sueño) must all be rendered as
- * shadcn-Tabs triggers. This is the same surface as the pre-refactor
- * `[id]/page.tsx`, simply lifted into a reusable component.
+ * ConfiguracionTab tests — once the project has loaded the three inner
+ * tabs (General / Infraestructura / Sueño) must all be rendered as
+ * shadcn-Tabs triggers.
+ *
+ * History: the prior `operativa` sub-tab was REMOVED in `project-operativa`
+ * (Phase 7.2). The realtime Operativa surface is now its own top-level
+ * tab and Configuración no longer hosts a duplicate.
  */
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
@@ -32,13 +35,10 @@ vi.mock("next/navigation", () => ({
 }));
 
 // Panels we don't care about exercising in this test — keep them light so
-// the test focuses on the four-tab structure rather than each panel's own
+// the test focuses on the tab structure rather than each panel's own
 // data fetching behavior.
 vi.mock("@/components/projects/InfraestructuraPanel", () => ({
   InfraestructuraPanel: () => <div data-testid="infra-panel-stub" />,
-}));
-vi.mock("@/components/projects/OperativaPanel", () => ({
-  OperativaPanel: () => <div data-testid="operativa-panel-stub" />,
 }));
 vi.mock("@/components/projects/SuenoPanel", () => ({
   SuenoPanel: () => <div data-testid="sueno-panel-stub" />,
@@ -106,7 +106,7 @@ describe("ConfiguracionTab", () => {
     (getProject as ReturnType<typeof vi.fn>).mockResolvedValue(baseProject);
   });
 
-  it("renders the four inner sub-tab triggers once the project loads", async () => {
+  it("renders the three inner sub-tab triggers once the project loads", async () => {
     render(<ConfiguracionTab projectId={PROJECT_ID} />);
 
     await waitFor(() => {
@@ -117,12 +117,21 @@ describe("ConfiguracionTab", () => {
     expect(
       screen.getByTestId("config-subtab-infraestructura"),
     ).toBeInTheDocument();
-    expect(
-      screen.getByTestId("config-subtab-operativa"),
-    ).toBeInTheDocument();
     expect(screen.getByTestId("config-subtab-sueno")).toBeInTheDocument();
     expect(screen.getByTestId("config-subtab-sueno")).toHaveTextContent(
       "Sueño",
     );
+  });
+
+  it("no longer mounts an Operativa sub-tab (project-operativa Phase 7.2)", async () => {
+    render(<ConfiguracionTab projectId={PROJECT_ID} />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("config-subtab-general"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("config-subtab-operativa"),
+    ).not.toBeInTheDocument();
   });
 });

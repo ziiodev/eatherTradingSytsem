@@ -1,36 +1,95 @@
+"use client";
+
 /**
- * Operativa — top-level tab placeholder.
+ * Operativa — top-level tab of the project detail screen.
  *
- * The real Operativa surface (DB+MCP hybrid orders, account summary, live
- * WebSocket updates) lands in the sibling `project-operativa` SDD change.
- * Here we only reserve the URL + render a friendly "próximamente" card so
- * the new three-tab layout has a real route to navigate to.
+ * The realtime operator surface. Three sections, top to bottom:
+ *
+ *   ┌────────────────────────────────────────────────────────┐
+ *   │  AccountSummaryCard — MCP+DB hybrid health snapshot    │
+ *   ├────────────────────────────────────────────────────────┤
+ *   │  OpenPositionsTable — live MCP positions feed          │
+ *   ├────────────────────────────────────────────────────────┤
+ *   │  OrdersHistoryTable — paginated + filtered history     │
+ *   └────────────────────────────────────────────────────────┘
+ *
+ * Live data is driven by `useOperativaWebSocket(projectId)` — a single
+ * hook owns the WS lifecycle + REST fallback + transport-state machine.
+ * The orders history table fetches independently because its data is
+ * query-driven (filters change) and not push-friendly.
+ *
+ * Page chrome (header, back link, lifecycle controls, tab nav) is
+ * supplied by `[id]/layout.tsx`.
  */
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { use } from "react";
 
-export default function OperativaPage(): React.JSX.Element {
+import { AccountSummaryCard } from "@/components/operativa/AccountSummaryCard";
+import { OpenPositionsTable } from "@/components/operativa/OpenPositionsTable";
+import { OrdersHistoryTable } from "@/components/operativa/OrdersHistoryTable";
+import { useOperativaWebSocket } from "@/components/operativa/useOperativaWebSocket";
+import { Badge } from "@/components/ui/badge";
+
+function TransportBadge({
+  state,
+}: {
+  state: ReturnType<typeof useOperativaWebSocket>["transportState"];
+}): React.JSX.Element {
+  switch (state) {
+    case "live":
+      return (
+        <Badge variant="success" data-testid="operativa-transport-badge">
+          En vivo
+        </Badge>
+      );
+    case "connecting":
+      return (
+        <Badge variant="muted" data-testid="operativa-transport-badge">
+          Conectando…
+        </Badge>
+      );
+    case "reconnecting":
+      return (
+        <Badge variant="warning" data-testid="operativa-transport-badge">
+          Reconectando
+        </Badge>
+      );
+    case "rest":
+      return (
+        <Badge variant="muted" data-testid="operativa-transport-badge">
+          Sólo REST
+        </Badge>
+      );
+    case "error":
+      return (
+        <Badge variant="danger" data-testid="operativa-transport-badge">
+          Sin conexión en vivo
+        </Badge>
+      );
+  }
+}
+
+export default function OperativaPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): React.JSX.Element {
+  const { id: projectId } = use(params);
+  const { accountSummary, positions, mcpStatus, transportState } =
+    useOperativaWebSocket(projectId);
+
   return (
-    <Card data-testid="operativa-placeholder">
-      <CardHeader>
-        <CardTitle>Operativa</CardTitle>
-        <CardDescription>
-          Vista operativa del proyecto — próximamente.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <p className="text-sm text-[rgb(var(--foreground-muted))]">
-          Esta pestaña incluirá el resumen de cuenta, posiciones abiertas,
-          aprobaciones pendientes y órdenes recientes en tiempo real. Llegará
-          en una próxima entrega.
-        </p>
-      </CardContent>
-    </Card>
+    <section
+      data-testid="operativa-page"
+      className="flex flex-col gap-6"
+    >
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold">Operativa</h2>
+        <TransportBadge state={transportState} />
+      </div>
+      <AccountSummaryCard summary={accountSummary} mcpStatus={mcpStatus} />
+      <OpenPositionsTable positions={positions} />
+      <OrdersHistoryTable projectId={projectId} />
+    </section>
   );
 }

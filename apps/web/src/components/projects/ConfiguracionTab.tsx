@@ -1,20 +1,24 @@
 "use client";
 
 /**
- * ConfiguracionTab — the existing four-panel project configuration surface.
+ * ConfiguracionTab — project configuration surface (three sub-tabs).
  *
- * Hosts the inner shadcn-Tabs (`general` / `infraestructura` / `operativa` /
- * `sueno`) and the project PATCH handling that previously lived inline in
+ * Hosts the inner shadcn-Tabs (`general` / `infraestructura` / `sueno`)
+ * and the project PATCH handling that previously lived inline in
  * `[id]/page.tsx`.
  *
  * Lifted into a dedicated component so it can be consumed verbatim by the
  * new `/configuracion` route segment introduced by `project-tabs-shell`.
- * Behavior is intentionally unchanged from the pre-refactor page.
+ *
+ * History: the prior `operativa` sub-tab was REMOVED in `project-operativa`
+ * (Phase 7.2). The realtime Operativa surface now lives as its own
+ * top-level tab at `/proyectos/[id]/operativa`, so Configuración no
+ * longer duplicates it.
  *
  * The outer chrome (BackLink, header with project name + status, lifecycle
  * action buttons + Eliminar, LearningNav, top-level tab navigation) lives
- * in the parent `layout.tsx` once the refactor lands — this component is
- * the *contents* of the Configuración tab, not the page chrome.
+ * in the parent `layout.tsx` — this component is the *contents* of the
+ * Configuración tab, not the page chrome.
  */
 
 import { useEffect, useState } from "react";
@@ -36,7 +40,6 @@ import {
 import { ProjectForm } from "@/components/projects/ProjectForm";
 import { ProjectAgentsPanel } from "@/components/projects/ProjectAgentsPanel";
 import { InfraestructuraPanel } from "@/components/projects/InfraestructuraPanel";
-import { OperativaPanel } from "@/components/projects/OperativaPanel";
 import { SuenoPanel } from "@/components/projects/SuenoPanel";
 
 export interface ConfiguracionTabProps {
@@ -152,7 +155,7 @@ function ProjectTabs({
   onProjectUpdated: (next: ProjectDetail) => void;
 }): React.JSX.Element {
   const [tab, setTab] = useState<
-    "general" | "infraestructura" | "operativa" | "sueno"
+    "general" | "infraestructura" | "sueno"
   >("general");
   return (
     <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
@@ -165,9 +168,6 @@ function ProjectTabs({
           data-testid="config-subtab-infraestructura"
         >
           Infraestructura
-        </TabsTrigger>
-        <TabsTrigger value="operativa" data-testid="config-subtab-operativa">
-          Operativa
         </TabsTrigger>
         <TabsTrigger value="sueno" data-testid="config-subtab-sueno">
           Sueño
@@ -193,9 +193,6 @@ function ProjectTabs({
           project={project}
           onProjectUpdated={onProjectUpdated}
         />
-      </TabsContent>
-      <TabsContent value="operativa">
-        <OperativaPanel project={project} />
       </TabsContent>
       <TabsContent value="sueno">
         <SuenoPanel projectId={project.id} />
