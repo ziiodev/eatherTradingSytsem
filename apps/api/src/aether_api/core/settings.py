@@ -407,6 +407,22 @@ class Settings(BaseSettings):
     )
 
     # ------------------------------------------------------------------
+    # Operativa WebSocket + LiveBus — push surface for the operator
+    # Operativa tab. See ``sdd/project-operativa/spec/operativa-live``
+    # (#2123) and ``sdd/project-operativa/spec/multi-tenancy-delta``
+    # (#2122). When False the WS router is NOT mounted and the LiveBus
+    # background tasks are NOT started; the REST surface continues to
+    # work (degraded UX, but the frontend polls in that mode).
+    # ------------------------------------------------------------------
+    operativa_ws_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "AETHER_OPERATIVA_WS_ENABLED",
+            "OPERATIVA_WS_ENABLED",
+        ),
+    )
+
+    # ------------------------------------------------------------------
     # pydantic-settings config
     # ------------------------------------------------------------------
     model_config = SettingsConfigDict(

@@ -48,6 +48,7 @@ from aether_api.routers.audit_log import router as audit_log_router
 from aether_api.routers.learning import router as learning_router
 from aether_api.routers.me import router as me_router
 from aether_api.routers.me_mfa import router as me_mfa_router
+from aether_api.routers.operativa_ws import router as operativa_ws_router
 from aether_api.routers.projects import router as projects_router
 from aether_api.routers.projects_live import router as projects_live_router
 from aether_api.routers.skills import router as skills_router
@@ -118,6 +119,26 @@ class AgentBodySizeGuardMiddleware(BaseHTTPMiddleware):
                         },
                     )
         return await call_next(request)
+
+
+async def _shutdown_live_bus(app: FastAPI) -> None:
+    """Cancel every LiveBus polling task. No-op when the bus is None.
+
+    Called from both lifespan teardown branches (docker_reconcile_enabled
+    and the bootstrap branch) so the per-project polling tasks do not
+    leak across the shutdown boundary.
+    """
+    bus = getattr(app.state, "live_bus", None)
+    if bus is None:
+        return
+    try:
+        await bus.shutdown()
+    except Exception:  # noqa: BLE001 — teardown is best-effort.
+        import logging as _logging
+
+        _logging.getLogger(__name__).exception(
+            "operativa.live_bus.shutdown_raised"
+        )
 
 
 @asynccontextmanager
@@ -296,6 +317,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "learning.warm: recovery loader raised; continuing startup"
         )
 
+    # Operativa LiveBus — feature-flagged. Construct unconditionally
+    # (cheap: no background work until a subscriber arrives) so the
+    # WS router can resolve ``app.state.live_bus`` even when the flag
+    # is OFF and the router was not mounted. We still set the
+    # attribute to None in that branch to make the absence explicit.
+    if settings.operativa_ws_enabled:
+        from aether_api.db.session import get_session_maker as _live_bus_session_maker
+        from aether_api.services.live_bus import LiveBus as _LiveBus
+
+        app.state.live_bus = _LiveBus(_live_bus_session_maker())
+    else:
+        app.state.live_bus = None
+
     # Sleep Phase scheduler — feature-flagged, defaults off.
     if settings.sleep_scheduler_enabled:
         try:
@@ -341,6 +375,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 from aether_api.sleep.scheduler import shutdown_scheduler
 
                 await shutdown_scheduler(sleep_scheduler)
+            await _shutdown_live_bus(app)
     else:
         try:
             yield
@@ -349,6 +384,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 from aether_api.sleep.scheduler import shutdown_scheduler
 
                 await shutdown_scheduler(sleep_scheduler)
+            await _shutdown_live_bus(app)
 
 
 def create_app() -> FastAPI:
@@ -412,6 +448,14 @@ def create_app() -> FastAPI:
     # Added by the sleep-learning-loop change (Phase 9). Read-only; writes
     # happen via the Sleep orchestrator and the sandboxed Worker ctx.
     app.include_router(learning_router)
+    # Operativa WebSocket — push surface for the operator dashboard.
+    # Feature-flagged: when ``AETHER_OPERATIVA_WS_ENABLED`` is False
+    # the route is NOT mounted at all (upgrade attempts get 404). See
+    # ``sdd/project-operativa/spec/operativa-live`` (#2123) for the
+    # event protocol and ``...multi-tenancy-delta`` (#2122) for the
+    # auth/origin gates enforced inside the handler.
+    if settings.operativa_ws_enabled:
+        app.include_router(operativa_ws_router)
     # JWKS — published at the canonical /.well-known location for sister
     # services and the edge middleware to verify RS256 access tokens.
     app.include_router(jwks_router)
