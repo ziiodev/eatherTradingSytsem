@@ -245,3 +245,130 @@ async def test_cross_tenant_insert_raises(app_client) -> None:
                 is_special=False,
                 sleep_run_id=None,
             )
+
+
+# ---------------------------------------------------------------------------
+# mark_special — added by sleep-learning-loop Phase 7
+# ---------------------------------------------------------------------------
+
+
+async def _seed_episode(
+    session,
+    *,
+    user_id,
+    project_id,
+    state_key: str = "sk:x",
+    action: str = "buy",
+    reward: Decimal | float = Decimal("0.0"),
+):
+    """Shared helper — insert one episode and return the ORM row."""
+    from aether_api.repositories.episodic_memory_repository import (
+        EpisodicMemoryRepository,
+    )
+
+    repo = EpisodicMemoryRepository(session)
+    return await repo.insert(
+        user_id=user_id,
+        project_id=project_id,
+        trade_id=None,
+        state={},
+        state_key=state_key,
+        action=action,
+        reward=Decimal(str(reward)),
+        result="flat",
+        worker_reasoning="x",
+        q_value_before=Decimal("0.0"),
+        q_value_after=Decimal("0.0"),
+        is_special=False,
+        sleep_run_id=None,
+    )
+
+
+async def test_mark_special_flips_meta_data_flag(app_client) -> None:
+    from aether_api.db.session import get_session_maker
+    from aether_api.repositories.episodic_memory_repository import (
+        EpisodicMemoryRepository,
+    )
+
+    user_a_id, _, proj_a_id, _ = await _seed_two_users_with_projects()
+
+    maker = get_session_maker()
+    async with maker() as session:
+        ep1 = await _seed_episode(
+            session, user_id=user_a_id, project_id=proj_a_id, state_key="sk:1"
+        )
+        ep2 = await _seed_episode(
+            session, user_id=user_a_id, project_id=proj_a_id, state_key="sk:2"
+        )
+        await session.commit()
+
+    async with maker() as session:
+        repo = EpisodicMemoryRepository(session)
+        n = await repo.mark_special(
+            user_id=user_a_id,
+            project_id=proj_a_id,
+            episode_ids=[ep1.id, ep2.id],
+        )
+        await session.commit()
+        assert n == 2
+
+    async with maker() as session:
+        repo = EpisodicMemoryRepository(session)
+        rows = await repo.list_by_project(
+            user_id=user_a_id,
+            project_id=proj_a_id,
+            since=None,
+            until=None,
+            limit=10,
+            offset=0,
+        )
+        assert len(rows) == 2
+        for r in rows:
+            assert r.meta_data["is_special"] is True
+            # Pre-existing sibling keys (state / result / worker_reasoning)
+            # must survive the JSONB concat — that's the whole point of
+            # using ``||`` instead of an assignment.
+            assert "worker_reasoning" in r.meta_data
+            assert "result" in r.meta_data
+
+
+async def test_mark_special_empty_list_is_noop(app_client) -> None:
+    from aether_api.db.session import get_session_maker
+    from aether_api.repositories.episodic_memory_repository import (
+        EpisodicMemoryRepository,
+    )
+
+    user_a_id, _, proj_a_id, _ = await _seed_two_users_with_projects()
+
+    maker = get_session_maker()
+    async with maker() as session:
+        repo = EpisodicMemoryRepository(session)
+        n = await repo.mark_special(
+            user_id=user_a_id, project_id=proj_a_id, episode_ids=[]
+        )
+        assert n == 0
+
+
+async def test_mark_special_cross_tenant_raises(app_client) -> None:
+    from aether_api.db.session import get_session_maker
+    from aether_api.repositories.episodic_memory_repository import (
+        EpisodicMemoryRepository,
+    )
+
+    user_a_id, user_b_id, proj_a_id, _ = await _seed_two_users_with_projects()
+
+    maker = get_session_maker()
+    async with maker() as session:
+        ep = await _seed_episode(
+            session, user_id=user_a_id, project_id=proj_a_id, state_key="sk:1"
+        )
+        await session.commit()
+
+    async with maker() as session:
+        repo = EpisodicMemoryRepository(session)
+        with pytest.raises(PermissionError):
+            await repo.mark_special(
+                user_id=user_b_id,
+                project_id=proj_a_id,
+                episode_ids=[ep.id],
+            )

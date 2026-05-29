@@ -18,7 +18,8 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
+from sqlalchemy.dialects.postgresql import JSONB
 
 from aether_api.models.episodic_memory import EpisodicMemory
 from aether_api.models.project import Project
@@ -133,6 +134,59 @@ class EpisodicMemoryRepository(BaseRepository):
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def mark_special(
+        self,
+        *,
+        user_id: uuid.UUID,
+        project_id: uuid.UUID,
+        episode_ids: list[uuid.UUID],
+    ) -> int:
+        """Flag the given episodes as ``meta_data.is_special = True``.
+
+        Tenant-scoped via a JOIN through ``projects``: a row that does
+        not belong to ``user_id`` is silently skipped (the JOIN strips
+        it). Returns the number of rows actually updated.
+
+        Idempotent: re-flagging an already-special row is a no-op (the
+        JSONB merge re-writes the same value). We use the postgres
+        JSONB ``||`` operator so any other keys in ``meta_data`` are
+        preserved unchanged.
+
+        ``episode_ids = []`` is a no-op that returns 0 without touching
+        the DB — callers that accumulate ids during a pass don't have
+        to special-case the empty path.
+        """
+        if not episode_ids:
+            return 0
+
+        # Pre-check ownership to refuse cross-tenant updates loudly,
+        # matching the rest of the repository surface. We resolve the
+        # project owner once and bail if it doesn't match.
+        owns = await self._user_owns_project(user_id, project_id)
+        if not owns:
+            raise PermissionError(
+                f"user {user_id} does not own project {project_id}"
+            )
+
+        # Use a JSONB concat so we preserve the existing meta_data keys
+        # (state / result / worker_reasoning / q_value_before / etc.).
+        # ``meta_data || jsonb_build_object('is_special', true)`` is the
+        # canonical "set key without nuking siblings" idiom.
+        stmt = (
+            update(EpisodicMemory)
+            .where(EpisodicMemory.id.in_(episode_ids))
+            .where(EpisodicMemory.project_id == project_id)
+            .values(
+                meta_data=EpisodicMemory.meta_data.op("||")(
+                    func.jsonb_build_object("is_special", True).cast(JSONB)
+                )
+            )
+            .returning(EpisodicMemory.id)
+        )
+        result = await self.session.execute(stmt)
+        rows = result.all()
+        return len(rows)
 
     async def top_k_states(
         self,

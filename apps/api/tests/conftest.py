@@ -218,7 +218,8 @@ async def _truncate_mutable_tables(migrated_db: str) -> AsyncIterator[None]:
             text(
                 "TRUNCATE TABLE users, sessions, agents, projects, skills, "
                 "agent_skills, agent_runs, mfa_recovery_codes, "
-                "sleep_runs, sleep_reflections, config_versions "
+                "sleep_runs, sleep_reflections, config_versions, "
+                "q_tables, episodic_memory, semantic_memory, sleep_reports "
                 "RESTART IDENTITY CASCADE"
             )
         )

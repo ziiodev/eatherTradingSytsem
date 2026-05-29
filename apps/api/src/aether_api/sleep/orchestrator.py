@@ -48,8 +48,17 @@ from aether_api.models.agent import Agent
 from aether_api.models.project import Project
 from aether_api.models.sleep_run import SleepRun
 from aether_api.repositories.agent_repository import AgentRepository
+from aether_api.repositories.episodic_memory_repository import (
+    EpisodicMemoryRepository,
+)
 from aether_api.repositories.project_repository import ProjectRepository
 from aether_api.sleep.classifier import classify_changes
+from aether_api.sleep.learning_step import (
+    LearningStepResult,
+    apply_q_update_pass,
+    finalize_learning_step,
+    is_learning_enabled,
+)
 from aether_api.sleep.repositories import (
     ConfigVersionRepository,
     SleepReflectionRepository,
@@ -248,6 +257,7 @@ async def run_sleep_phase(
     user_id: uuid.UUID,
     phase_type: str,
     engine: Any | None = None,
+    learning_cache: Any | None = None,
 ) -> OrchestratorResult:
     """Execute one Micro / Profundo / Crítico sleep run end-to-end.
 
@@ -345,6 +355,7 @@ async def run_sleep_phase(
         run=run,
         previous_status=previous_status,
         phase_type=phase_type,
+        learning_cache=learning_cache,
     )
 
 
@@ -356,11 +367,11 @@ async def _execute_run(
     run: SleepRun,
     previous_status: str,
     phase_type: str,
+    learning_cache: Any | None = None,
 ) -> OrchestratorResult:
     """Inner loop: invoke each agent, synthesise, persist, restore."""
     refl_repo = SleepReflectionRepository(session)
     cv_repo = ConfigVersionRepository(session)
-    proj_repo = ProjectRepository(session)
 
     agents = await _resolve_agents_for_project(session, project)
     if not agents:
@@ -457,7 +468,30 @@ async def _execute_run(
     )
 
     config_version_id: uuid.UUID | None = None
-    if diff_keys(current=current_snapshot, proposed=proposed_snapshot):
+    learning_result: LearningStepResult | None = None
+
+    # Phase 7 of ``sleep-learning-loop``: when this is a deep-sleep run
+    # AND the learning flag is enabled, we replace the standard
+    # ``cv_repo.create`` write with the atomic 3-write finalize. The
+    # finalize wraps:
+    #
+    #   q_tables INSERT + sleep_reports INSERT + config_versions INSERT
+    #   (+ episodic_memory mark-special UPDATE)
+    #
+    # in a single savepoint so a crash on ANY path rolls everything
+    # back. When the flag is OFF (or this is a Micro/Crítico run) the
+    # original behaviour is unchanged.
+    if phase_type == "profundo" and is_learning_enabled():
+        learning_result = await _run_learning_step(
+            session,
+            project=project,
+            run=run,
+            current_snapshot=current_snapshot,
+            proposed_snapshot=proposed_snapshot,
+            per_agent_suggestions=per_agent_suggestions,
+        )
+        config_version_id = learning_result.config_version_id
+    elif diff_keys(current=current_snapshot, proposed=proposed_snapshot):
         # Find the parent (latest applied) version for lineage.
         parent = await cv_repo.latest_applied_for_project(project.id)
         risk_class = classify_changes(
@@ -478,6 +512,12 @@ async def _execute_run(
         f"agents: {n_success} succeeded, {n_failed} failed; "
         f"proposed_config_version={'yes' if config_version_id else 'no'}"
     )
+    if learning_result is not None:
+        summary += (
+            f"; q_table_version={learning_result.q_table_version}"
+            f"; risk_class={learning_result.risk_class}"
+            f"; special_marked={learning_result.special_marked}"
+        )
 
     await SleepRunRepository(session).finalize(
         run_id=run.id, status=final_status, summary=summary
@@ -505,11 +545,130 @@ async def _execute_run(
     )
 
     await session.commit()
+
+    # Phase 7 of ``sleep-learning-loop``: invalidate the learning cache
+    # ONLY after the outer transaction has committed. If anything in
+    # the finalize block raised, the transaction would have rolled back
+    # above and ``learning_result`` would be None — the cache stays
+    # warm with the prior (still-canonical) Q-Table. This is the
+    # invariant the spec calls out: a failed transaction MUST NOT
+    # invalidate the cache.
+    if learning_result is not None and learning_cache is not None:
+        try:
+            learning_cache.invalidate(project.user_id, project.id)
+        except Exception:  # noqa: BLE001 — cache invalidation is best-effort.
+            logger.exception(
+                "sleep.orchestrator: learning_cache.invalidate raised; "
+                "next read will return stale data until TTL expires"
+            )
+
     return OrchestratorResult(
         sleep_run_id=run.id,
         status=final_status,
         summary=summary,
         config_version_id=config_version_id,
+    )
+
+
+async def _run_learning_step(
+    session: AsyncSession,
+    *,
+    project: Project,
+    run: SleepRun,
+    current_snapshot: dict[str, Any],
+    proposed_snapshot: dict[str, Any],
+    per_agent_suggestions: dict[str, dict[str, Any]],
+) -> LearningStepResult:
+    """Drive the Q-update pass + atomic 3-write finalize for deep sleep.
+
+    Splits the logic out of ``_execute_run`` so the orchestrator body
+    stays readable. Returns the :class:`LearningStepResult` so the
+    caller can stamp the summary string and decide whether to fire
+    cache invalidation.
+
+    Step ordering (per design #2070 and spec #2066):
+
+    1. Pull every unconsumed episode since the previous sleep_run.
+    2. Run the in-memory Q-update + special tagging pass.
+    3. Compute the Q-Table risk class from (old_table, new_table) +
+       project caps + TOP-K state walk — BEFORE the transaction so the
+       class is known when we write the config_versions row.
+    4. Finalize: q_tables INSERT + sleep_reports INSERT +
+       config_versions INSERT + mark-special UPDATE inside one
+       ``begin_nested`` savepoint.
+
+    The synthesised reflection text + auditor metrics are folded into
+    the sleep_report payload so the dashboard can render the run
+    without joining sleep_reflections.
+    """
+    epi_repo = EpisodicMemoryRepository(session)
+    cv_repo = ConfigVersionRepository(session)
+
+    # 1+2. Pull episodes and run the pass. We use the project's
+    # ``last_sleep_at`` as the "since" boundary — that's the timestamp
+    # the orchestrator stamped at the END of the previous run.
+    since = getattr(project, "last_sleep_at", None)
+    pass_result = await apply_q_update_pass(
+        session,
+        user_id=project.user_id,
+        project=project,
+        sleep_run=run,
+        since=since,
+    )
+
+    # 3. Top-K state list for the classifier's policy-implication walk.
+    # An empty list signals cold-start and the classifier falls back to
+    # the magnitude bracket.
+    top_k = await epi_repo.top_k_states(
+        user_id=project.user_id, project_id=project.id, k=20
+    )
+
+    from aether_api.learning.qtable_versioning import classify_qtable_delta
+
+    risk_class = classify_qtable_delta(
+        old_table=pass_result.old_table,
+        new_table=pass_result.new_table,
+        project=project,
+        top_k_states=top_k,
+    )
+
+    # Snapshot the agent reflection digest into the sleep report. The
+    # orchestrator already has ``per_agent_suggestions`` keyed by type;
+    # we pass the worker bucket as ``worker_insights`` and the auditor
+    # bucket as ``auditor_metrics`` so the dashboard reads the same
+    # structure regardless of whether a Sleep Phase ran the learning
+    # loop.
+    worker_insights = per_agent_suggestions.get("worker") or {}
+    auditor_metrics = per_agent_suggestions.get("auditor") or {}
+
+    # ``improvements_applied``: which top-level keys changed between
+    # current and proposed snapshot. The dashboard renders this as a
+    # human-readable chip list.
+    improvements_applied = diff_keys(
+        current=current_snapshot, proposed=proposed_snapshot
+    )
+
+    # Parent for lineage — the latest applied version on this project.
+    parent = await cv_repo.latest_applied_for_project(project.id)
+
+    # 4. Atomic finalize. ``finalize_learning_step`` owns the savepoint;
+    # an exception here propagates out of the orchestrator and the
+    # outer ``session.commit()`` is never reached.
+    return await finalize_learning_step(
+        session,
+        user_id=project.user_id,
+        project=project,
+        sleep_run=run,
+        pass_result=pass_result,
+        risk_class=risk_class,
+        version_name=f"Auto-sleep {run.id}",
+        parent_config_version_id=parent.id if parent is not None else None,
+        auditor_metrics=auditor_metrics,
+        worker_insights=worker_insights,
+        improvements_applied=improvements_applied,
+        summary_md=None,
+        overall_score=0.0,
+        proposed_snapshot=proposed_snapshot,
     )
 
 

@@ -20,7 +20,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -153,6 +153,7 @@ class SleepReportResponse(BaseModel):
 async def trigger_sleep_run(
     project_id: uuid.UUID,
     body: TriggerSleepBody,
+    request: Request,
     user: Annotated[User, Depends(current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TriggerSleepResponse:
@@ -191,11 +192,19 @@ async def trigger_sleep_run(
                 status_code=status.HTTP_404_NOT_FOUND, detail="project not found"
             )
 
+    # Thread the in-process learning cache through so the orchestrator
+    # can invalidate the entry after a successful deep-sleep
+    # finalize. ``getattr`` defaults to ``None`` when the lifespan
+    # didn't attach one (tests / minimal boots) — the orchestrator
+    # treats ``None`` as "no cache to invalidate".
+    learning_cache = getattr(request.app.state, "learning_cache", None)
+
     orchestrator_result = await run_sleep_phase(
         session,
         project_id=project.id,
         user_id=project.user_id,
         phase_type=body.phase_type,
+        learning_cache=learning_cache,
     )
     return TriggerSleepResponse(
         sleep_run_id=orchestrator_result.sleep_run_id,
