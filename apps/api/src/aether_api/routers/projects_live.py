@@ -39,6 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from aether_api.core.settings import get_settings
 from aether_api.db.session import get_session
+from aether_api.learning.audit import log_cross_tenant_attempt
 from aether_api.mcp_client import (
     ApprovalGate,
     ApprovalRejected,
@@ -222,6 +223,37 @@ async def _load_project_or_404(
     repo = ProjectRepository(session)
     project = await repo.get_for_user(user.id, project_id)
     if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="project not found")
+    return project
+
+
+async def _load_operativa_project_or_404(
+    project_id: uuid.UUID,
+    user: User,
+    session: AsyncSession,
+    *,
+    operation: str,
+) -> Any:
+    """Variant of :func:`_load_project_or_404` for the Operativa surface.
+
+    Per ``sdd/project-operativa/spec/multi-tenancy-delta`` (#2122) the
+    operativa REST endpoints MUST emit a structured cross-tenant audit
+    line when the caller is authenticated but the project belongs to a
+    different tenant. We can't distinguish "no such project" from "wrong
+    tenant" with a single SELECT — so we audit on every miss (the token
+    bucket in :mod:`aether_api.learning.audit` prevents log-volume abuse)
+    and keep the 404 response shape identical to the non-operativa case
+    so we never leak project existence.
+    """
+    repo = ProjectRepository(session)
+    project = await repo.get_for_user(user.id, project_id)
+    if project is None:
+        await log_cross_tenant_attempt(
+            actor_user_id=user.id,
+            target_project_id=project_id,
+            table_name="projects",
+            operation=operation,
+        )
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="project not found")
     return project
 
@@ -729,7 +761,9 @@ async def get_operativa_account_summary(
       back from ``source_at``.
     * Tenant-scoped: cross-tenant returns 404 (no existence leak).
     """
-    project = await _load_project_or_404(project_id, user, session)
+    project = await _load_operativa_project_or_404(
+        project_id, user, session, operation="operativa_account_summary"
+    )
 
     # --- DB-side rolling P&L always computed -----------------------------
     now = datetime.now(tz=UTC)
@@ -843,7 +877,9 @@ async def list_operativa_orders(
     filter window (NOT just the page) so the dashboard cards reflect
     the user-visible slice end-to-end.
     """
-    await _load_project_or_404(project_id, user, session)
+    await _load_operativa_project_or_404(
+        project_id, user, session, operation="operativa_orders_list"
+    )
 
     now = datetime.now(tz=UTC)
     effective_from = from_ if from_ is not None else now - timedelta(days=30)

@@ -565,3 +565,89 @@ async def test_orders_invalid_date_range_returns_400(app_client) -> None:
         },
     )
     assert resp.status_code == 400
+
+
+# ===========================================================================
+# Cross-tenant audit hook — Phase 8 (multi-tenancy delta #2122).
+# ===========================================================================
+
+
+async def test_account_summary_cross_tenant_emits_audit(
+    app_client, monkeypatch
+) -> None:
+    """A cross-tenant /operativa/account-summary GET MUST emit one
+    ``log_cross_tenant_attempt`` line — same contract as the WS route."""
+    from aether_api.learning import audit as audit_module
+    from aether_api.learning.audit import reset_for_test
+    from aether_api.routers import projects_live as router_module
+
+    reset_for_test()
+
+    # User A owns a project; user B is logged in and tries to read it.
+    _, project_a_id = await _seed_user_and_project(
+        email="ct-acct-a@example.com", project_name="A-ct-acct"
+    )
+    await _seed_and_login(
+        app_client, email="ct-acct-b@example.com", project_name="B-ct-acct"
+    )
+
+    audit_calls: list[dict[str, Any]] = []
+    original = audit_module.log_cross_tenant_attempt
+
+    async def _spy(**kwargs: Any) -> bool:
+        audit_calls.append(kwargs)
+        return await original(**kwargs)
+
+    monkeypatch.setattr(
+        router_module, "log_cross_tenant_attempt", _spy, raising=True
+    )
+
+    resp = await app_client.get(
+        f"/api/projects/{project_a_id}/operativa/account-summary"
+    )
+    # Existence MUST NOT leak — still 404, identical to "no such project".
+    assert resp.status_code == 404
+    # The audit hook fired exactly once.
+    assert len(audit_calls) == 1, audit_calls
+    call = audit_calls[0]
+    assert str(call["target_project_id"]) == str(project_a_id)
+    assert call["table_name"] == "projects"
+    assert call["operation"] == "operativa_account_summary"
+
+
+async def test_orders_cross_tenant_emits_audit(app_client, monkeypatch) -> None:
+    """A cross-tenant /operativa/orders GET MUST emit one
+    ``log_cross_tenant_attempt`` line."""
+    from aether_api.learning import audit as audit_module
+    from aether_api.learning.audit import reset_for_test
+    from aether_api.routers import projects_live as router_module
+
+    reset_for_test()
+
+    _, project_a_id = await _seed_user_and_project(
+        email="ct-ord-a@example.com", project_name="A-ct-ord"
+    )
+    await _seed_and_login(
+        app_client, email="ct-ord-b@example.com", project_name="B-ct-ord"
+    )
+
+    audit_calls: list[dict[str, Any]] = []
+    original = audit_module.log_cross_tenant_attempt
+
+    async def _spy(**kwargs: Any) -> bool:
+        audit_calls.append(kwargs)
+        return await original(**kwargs)
+
+    monkeypatch.setattr(
+        router_module, "log_cross_tenant_attempt", _spy, raising=True
+    )
+
+    resp = await app_client.get(
+        f"/api/projects/{project_a_id}/operativa/orders"
+    )
+    assert resp.status_code == 404
+    assert len(audit_calls) == 1, audit_calls
+    call = audit_calls[0]
+    assert str(call["target_project_id"]) == str(project_a_id)
+    assert call["table_name"] == "projects"
+    assert call["operation"] == "operativa_orders_list"

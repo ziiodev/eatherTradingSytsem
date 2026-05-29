@@ -55,6 +55,7 @@ from aether_api.mcp_client.errors import MCPClientError, MCPUnreachable
 from aether_api.models.order import Order
 from aether_api.models.project import Project
 from aether_api.repositories.order_repository import OrderRepository
+from aether_api.services.operativa_metrics import set_mcp_status, set_ws_subscribers
 
 __all__ = [
     "DEFAULT_HEARTBEAT_INTERVAL_SECONDS",
@@ -270,6 +271,11 @@ class LiveBus:
                     self._project_loop(project_id),
                     name=f"live-bus-project-{project_id}",
                 )
+            subscriber_count = len(session.subscribers)
+        # Update the Prometheus gauge OUTSIDE the asyncio lock — the
+        # collector is process-global and synchronous; holding the
+        # mutex over it serialises subscribes pointlessly.
+        set_ws_subscribers(project_id, subscriber_count)
         return subscriber
 
     async def unsubscribe(self, subscriber: Subscriber) -> None:
@@ -281,17 +287,22 @@ class LiveBus:
         leaks ``CancelledError`` into the caller.
         """
         task_to_cancel: asyncio.Task[None] | None = None
+        remaining: int = 0
         async with self._mutex:
             session = self._sessions.get(subscriber.project_id)
             if session is None:
                 return
             session.subscribers.discard(subscriber)
+            remaining = len(session.subscribers)
             if not session.subscribers:
                 task_to_cancel = session.task
                 session.task = None
                 # Drop the session record so a fresh subscriber
                 # starts a fresh session with empty snapshots.
                 self._sessions.pop(subscriber.project_id, None)
+
+        # Reflect the new subscriber count (possibly 0) into the gauge.
+        set_ws_subscribers(subscriber.project_id, remaining)
 
         if task_to_cancel is not None and not task_to_cancel.done():
             task_to_cancel.cancel()
@@ -464,6 +475,7 @@ class LiveBus:
         # emit an "available=true" status event.
         if not session.mcp_available:
             session.mcp_available = True
+            set_mcp_status(project_id, available=True)
             self._broadcast(
                 project_id,
                 LiveEvent(
@@ -498,6 +510,7 @@ class LiveBus:
             return
         if session.mcp_available:
             session.mcp_available = False
+            set_mcp_status(project_id, available=False)
             self._broadcast(
                 project_id,
                 LiveEvent(
