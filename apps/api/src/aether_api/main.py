@@ -122,6 +122,27 @@ class AgentBodySizeGuardMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+async def _shutdown_chat_sweeper(app: FastAPI) -> None:
+    """Cancel the chat aborted-sweeper task and await its exit.
+
+    No-op when ``app.state.chat_sweeper_task`` is None (chat surface
+    OFF or Anthropic key unconfigured at startup). Called from both
+    lifespan teardown branches so the sweeper never leaks across the
+    shutdown boundary. CancelledError is expected; any other exception
+    surfaces via the sweeper's own logging before re-raising and is
+    suppressed here so teardown keeps draining the remaining hooks.
+    """
+    import asyncio as _asyncio
+    import contextlib as _contextlib
+
+    task = getattr(app.state, "chat_sweeper_task", None)
+    if task is None:
+        return
+    task.cancel()
+    with _contextlib.suppress(_asyncio.CancelledError, Exception):
+        await task
+
+
 async def _shutdown_live_bus(app: FastAPI) -> None:
     """Cancel every LiveBus polling task. No-op when the bus is None.
 
@@ -167,6 +188,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     reconcile_task: asyncio.Task[None] | None = None
     stop_event = asyncio.Event()
     sleep_scheduler = None
+    # ``app.state.chat_sweeper_task`` is the background asyncio task that
+    # reaps orphaned in-flight assistant rows (stop_reason IS NULL after
+    # grace) — see :mod:`aether_api.services.chat.sweeper`. We attach it
+    # to app.state so both shutdown branches below can cancel + await it
+    # without re-deriving the gating condition. ``None`` when the chat
+    # surface is OFF or the Anthropic key is unconfigured.
+    app.state.chat_sweeper_task = None
 
     # Sleep Phase boot sweep — mark crashed runs from a previous process
     # as ``crashed`` and restore project status. Cheap and always-on
@@ -331,6 +359,28 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     else:
         app.state.live_bus = None
 
+    # Project Chat aborted-sweeper — long-running asyncio task that
+    # marks ``chat_messages`` rows with ``stop_reason IS NULL`` older
+    # than ``threshold_seconds`` as ``stop_reason='aborted'`` so a
+    # mid-stream writer disconnect does not leave the UI displaying a
+    # "still streaming" row forever. Gated on BOTH ``chat_enabled``
+    # (the master switch the router uses to mount itself) AND a
+    # configured ``anthropic_api_key`` — without the key the chat
+    # router refuses turns with 500 ``CHAT_NOT_CONFIGURED``, so there
+    # are no orphaned rows for the sweeper to reap.
+    if settings.chat_enabled and settings.anthropic_api_key is not None:
+        from aether_api.db.session import get_session_maker as _chat_session_maker
+        from aether_api.services.chat.sweeper import chat_aborted_sweeper
+
+        app.state.chat_sweeper_task = asyncio.create_task(
+            chat_aborted_sweeper(
+                _chat_session_maker(),
+                sleep_seconds=60,
+                threshold_seconds=300,
+            ),
+            name="chat-aborted-sweeper",
+        )
+
     # Sleep Phase scheduler — feature-flagged, defaults off.
     if settings.sleep_scheduler_enabled:
         try:
@@ -377,6 +427,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
                 await shutdown_scheduler(sleep_scheduler)
             await _shutdown_live_bus(app)
+            await _shutdown_chat_sweeper(app)
     else:
         try:
             yield
@@ -386,6 +437,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
                 await shutdown_scheduler(sleep_scheduler)
             await _shutdown_live_bus(app)
+            await _shutdown_chat_sweeper(app)
 
 
 def create_app() -> FastAPI:
