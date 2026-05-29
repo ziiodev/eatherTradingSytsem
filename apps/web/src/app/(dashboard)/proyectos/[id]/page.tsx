@@ -32,6 +32,7 @@ import { ProjectAgentsPanel } from "@/components/projects/ProjectAgentsPanel";
 import { InfraestructuraPanel } from "@/components/projects/InfraestructuraPanel";
 import { OperativaPanel } from "@/components/projects/OperativaPanel";
 import { SuenoPanel } from "@/components/projects/SuenoPanel";
+import { LearningNav } from "@/components/projects/LearningNav";
 
 const LIFECYCLE_ACTIONS: ReadonlyArray<{
   action: LifecycleAction;
@@ -232,6 +233,8 @@ export default function ProjectDetailPage({
           </Button>
         </div>
       </header>
+
+      <LearningNav projectId={project.id} />
 
       <ProjectTabs
         project={project}
