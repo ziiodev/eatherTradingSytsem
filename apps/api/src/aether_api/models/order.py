@@ -38,7 +38,12 @@ from aether_api.db.base import Base
 
 #: Allowed values for ``orders.status``. App-level membership check; the
 #: DB CHECK constraint named ``orders_status_valid`` is the source of
-#: truth (see migration).
+#: truth (see migration). ``closed`` and ``cancelled`` were added by
+#: migration ``0013_operativa_orders_extend`` to model the Operativa
+#: history surface — ``closed`` is the terminal state for a position
+#: that opened and then closed (P&L populated); ``cancelled`` is a
+#: pending / approved-pending-send order the operator withdrew before
+#: it shipped.
 ORDER_STATUSES: tuple[str, ...] = (
     "pending",
     "approved_pending_send",
@@ -46,6 +51,8 @@ ORDER_STATUSES: tuple[str, ...] = (
     "failed",
     "rejected",
     "expired",
+    "closed",
+    "cancelled",
 )
 
 ORDER_SIDES: tuple[str, ...] = ("buy", "sell")
@@ -106,6 +113,29 @@ class Order(Base):
     created_at: Mapped[datetime | None] = mapped_column(TIMESTAMP, server_default=text("NOW()"))
     filled_at: Mapped[datetime | None] = mapped_column(TIMESTAMP, nullable=True)
 
+    # --- Operativa extension (migration 0013_operativa_orders_extend) -------
+    # Broker fill / close timing + pricing + cost breakdown. ALL NULLABLE:
+    # the row is created at ``pending`` time before any open exists; the
+    # ``close_*`` and ``profit_*`` fields populate when the order
+    # transitions to ``status='closed'``. ``TIMESTAMP(timezone=True)`` matches
+    # the migration's ``TIMESTAMPTZ`` column type.
+    open_time: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    open_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    close_time: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    close_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    commission: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    swap: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    profit_gross: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    profit_net: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+
+    # Free-form JSONB for broker payloads, mt5 deal ids, reconciler
+    # breadcrumbs, etc. DB default is ``'{}'::jsonb`` (see migration
+    # 0013); we mirror it here so ORM-side inserts that omit the
+    # column don't violate the NOT NULL constraint.
+    meta_data: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+
     # --- Relations
     project = relationship("Project", lazy="raise")
     user = relationship("User", lazy="raise")
@@ -116,7 +146,7 @@ class Order(Base):
         CheckConstraint("volume > 0", name="orders_volume_positive"),
         CheckConstraint(
             "status IN ('pending','approved_pending_send','filled','failed',"
-            "'rejected','expired')",
+            "'rejected','expired','closed','cancelled')",
             name="orders_status_valid",
         ),
     )
