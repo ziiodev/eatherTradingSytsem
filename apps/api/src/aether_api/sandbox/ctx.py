@@ -74,3 +74,16 @@ class AgentContext:
     # NOT call any side-effecting MCP method (``place_order`` etc.). The
     # mcp_proxy short-circuits write methods when this is set.
     dry_run: bool = False
+
+    # --- Learning enabled flag. When False, the child binds the NO-OP
+    # learning proxies (reads return None/[]; ``ctx.episodic.record``
+    # raises ``RuntimeError("learning disabled")``). When True, the child
+    # constructs an :class:`aether_api.sandbox.rpc.RpcClient` from
+    # :attr:`rpc_conn` and wraps it in the three real proxies before
+    # handing control to the user entrypoint.
+    #
+    # The proxies themselves are NOT shipped on this dataclass — they
+    # depend on a live :class:`multiprocessing.connection.Connection`
+    # which the child constructs locally. See
+    # :func:`aether_api.sandbox.child.child_main` for the assembly site.
+    learning_enabled: bool = False

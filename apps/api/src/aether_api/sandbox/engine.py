@@ -33,6 +33,21 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from aether_api.sandbox.ctx import AgentContext, McpEndpoint
+from aether_api.sandbox.rpc import RpcDispatcher, RpcHandlers, build_default_handlers
+
+
+def _learning_enabled_from_env() -> bool:
+    """Read the ``AETHER_LEARNING_ENABLED`` env flag.
+
+    Treats the absence of the var as **disabled** so older deployments
+    that don't know about the flag boot into the safe NO-OP mode.
+    Accepts ``true`` / ``1`` / ``yes`` (case-insensitive) as ON.
+    """
+    raw = os.environ.get("AETHER_LEARNING_ENABLED")
+    if raw is None:
+        return False
+    return raw.strip().lower() in {"true", "1", "yes", "on"}
+
 
 #: Hard wall-clock deadline. RLIMIT_CPU=10s catches CPU; the 15s
 #: wall-clock catches sleeps / blocking I/O.
@@ -116,6 +131,7 @@ def _build_ctx(
         inputs=inputs,
         mode=mode,
         dry_run=dry_run,
+        learning_enabled=_learning_enabled_from_env(),
     )
 
 
@@ -130,6 +146,9 @@ class Engine:
         rlimit_as_bytes: int | None = None,
         rlimit_nofile: int | None = None,
         rlimit_fsize: int | None = None,
+        session_factory: Any | None = None,
+        learning_cache: Any | None = None,
+        rpc_handlers: dict[str, Any] | None = None,
     ) -> None:
         self.wall_clock_seconds = wall_clock_seconds
         self._rlimit_env: dict[str, str] = {}
@@ -141,6 +160,14 @@ class Engine:
             self._rlimit_env["AETHER_SANDBOX_RLIMIT_NOFILE"] = str(rlimit_nofile)
         if rlimit_fsize is not None:
             self._rlimit_env["AETHER_SANDBOX_RLIMIT_FSIZE"] = str(rlimit_fsize)
+        # Learning wiring — optional. Default-None keeps existing callers
+        # working: the child boots with learning disabled and the engine
+        # never spins an RPC dispatcher. Production callers (the agents
+        # router) pass session_factory + learning_cache so the per-run
+        # bound handlers can hit the DB and cache.
+        self._session_factory = session_factory
+        self._learning_cache = learning_cache
+        self._rpc_handlers_override = rpc_handlers
 
     # ------------------------------------------------------------------
     # Public API
@@ -196,6 +223,15 @@ class Engine:
         parent_to_child_r, parent_to_child_w = ctx_module.Pipe(duplex=False)
         child_to_parent_r, child_to_parent_w = ctx_module.Pipe(duplex=False)
 
+        # Third pipe — duplex — carries learning RPC traffic in BOTH
+        # directions. The parent's end is drained by an
+        # :class:`RpcDispatcher` thread; the child wraps its end in an
+        # :class:`RpcClient` and embeds that in the three proxies on
+        # ``ctx``. When ``ctx.learning_enabled`` is False, the child end
+        # is still passed (it's cheap and keeps the spawn signature
+        # stable) but the child binds Noop proxies and never sends.
+        rpc_parent, rpc_child = ctx_module.Pipe(duplex=True)
+
         # Apply the rlimit env hints for THIS spawn only. ``spawn`` snapshots
         # the parent env at process-start, so a temporary set/unset suffices.
         prev_env: dict[str, str | None] = {}
@@ -205,9 +241,39 @@ class Engine:
 
         proc = ctx_module.Process(
             target=_child_entrypoint,
-            args=(parent_to_child_r, child_to_parent_w),
+            args=(parent_to_child_r, child_to_parent_w, rpc_child),
             name=f"aether-sandbox-{run_id}",
         )
+
+        # If learning is on, spin a dispatcher thread BEFORE start() so the
+        # child can immediately call back without racing the parent.
+        dispatcher: RpcDispatcher | None = None
+        if ctx.learning_enabled:
+            try:
+                user_uuid = uuid.UUID(ctx.user_id)
+                project_uuid = uuid.UUID(ctx.project_id)
+            except (TypeError, ValueError):
+                # Non-UUID identifiers (e.g. a unit test with strings)
+                # disable RPC outright — the child's NoopEpisodic will
+                # raise on .record() and reads will return None.
+                ctx.learning_enabled = False
+            else:
+                handlers_map = self._rpc_handlers_override or (
+                    build_default_handlers(
+                        session_factory=self._session_factory,
+                        cache=self._learning_cache,
+                    )
+                )
+                dispatcher = RpcDispatcher(
+                    conn=rpc_parent,
+                    handlers=RpcHandlers(
+                        user_id=user_uuid,
+                        project_id=project_uuid,
+                        handlers=handlers_map,
+                    ),
+                    name=f"aether-rpc-{run_id}",
+                )
+                dispatcher.start()
 
         start = time.monotonic()
         try:
@@ -222,6 +288,21 @@ class Engine:
         # Close the child's ends in the parent so EOF detection works.
         parent_to_child_r.close()
         child_to_parent_w.close()
+        rpc_child.close()
+
+        def _cleanup_rpc() -> None:
+            """Tear down the dispatcher thread + close the parent end.
+
+            Called at every return path below so the dispatcher never
+            outlives the child. Idempotent — safe to call when the
+            dispatcher was never spun up (learning disabled).
+            """
+            import contextlib as _contextlib
+
+            with _contextlib.suppress(Exception):
+                rpc_parent.close()
+            if dispatcher is not None:
+                dispatcher.stop(timeout=2.0)
 
         # Ship the payload via Connection.send_bytes.
         try:
@@ -235,6 +316,7 @@ class Engine:
         except Exception as exc:  # noqa: BLE001
             self._kill(proc)
             child_to_parent_r.close()
+            _cleanup_rpc()
             return EngineResult(
                 run_id=run_id,
                 status="error",
@@ -278,6 +360,7 @@ class Engine:
             # Wall-clock expired with no result — SIGKILL.
             self._kill(proc)
             child_to_parent_r.close()
+            _cleanup_rpc()
             return EngineResult(
                 run_id=run_id,
                 status="timeout",
@@ -295,11 +378,13 @@ class Engine:
             # Child exited without producing a result.
             proc.join(timeout=2.0)
             child_to_parent_r.close()
+            _cleanup_rpc()
             return _from_dead_child(run_id, proc, wall_seconds)
 
         try:
             payload = pickle.loads(blob)  # noqa: S301 — child is our own code
         except Exception as exc:  # noqa: BLE001
+            _cleanup_rpc()
             return EngineResult(
                 run_id=run_id,
                 status="error",
@@ -307,6 +392,8 @@ class Engine:
                 exit_code=proc.exitcode,
                 duration_seconds=wall_seconds,
             )
+
+        _cleanup_rpc()
 
         return EngineResult(
             run_id=run_id,
@@ -411,11 +498,16 @@ def _from_dead_child(
     )
 
 
-def _child_entrypoint(read_conn: Any, write_conn: Any) -> None:
+def _child_entrypoint(read_conn: Any, write_conn: Any, rpc_conn: Any) -> None:
     """Module-level shim — multiprocessing.spawn requires a picklable
     target. Re-exports :func:`aether_api.sandbox.child.child_main`.
+
+    ``rpc_conn`` is the child-end of the duplex RPC pipe created by
+    :meth:`Engine._spawn_and_collect`. Forwarded into ``child_main``
+    where the learning bootstrap wraps it in an
+    :class:`aether_api.sandbox.rpc.RpcClient`.
     """
     # Late import so the child re-imports the module via spawn fresh.
     from aether_api.sandbox.child import child_main
 
-    child_main(read_conn, write_conn)
+    child_main(read_conn, write_conn, rpc_conn)

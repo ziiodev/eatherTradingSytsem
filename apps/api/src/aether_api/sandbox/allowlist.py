@@ -54,6 +54,11 @@ ALLOWED_TOP_LEVEL: Final[frozenset[str]] = frozenset(
         "aether_api.sandbox.ctx",
         "aether_api.sandbox.mcp_proxy",
         "aether_api.sandbox.errors",
+        # Learning ctx — frozen dataclasses + read/write proxies. The
+        # proxies themselves enforce tenancy; the child code can import
+        # the module to look up type symbols if it wants.
+        "aether_api.sandbox.learning_ctx",
+        "aether_api.sandbox.rpc",
     }
 )
 

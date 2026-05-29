@@ -93,8 +93,7 @@ def _install_socket_guard(allowed_host: str, allowed_port: int) -> None:
         host, port = address[0], address[1]
         if host != allowed_host or int(port) != allowed_port:
             raise NetworkDenied(
-                f"connect to {host}:{port} denied "
-                f"(allowed: {allowed_host}:{allowed_port})",
+                f"connect to {host}:{port} denied (allowed: {allowed_host}:{allowed_port})",
                 denial_reason=f"socket:{host}:{port}",
             )
         real_connect(self, address)
@@ -136,9 +135,7 @@ def _emit_result(write_conn: Any, payload: dict[str, Any]) -> None:
     import contextlib
 
     try:
-        write_conn.send_bytes(
-            pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL)
-        )
+        write_conn.send_bytes(pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL))
     finally:
         with contextlib.suppress(Exception):
             write_conn.close()
@@ -158,11 +155,17 @@ def _build_failure(status: str, exc: BaseException, denial_reason: str | None) -
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
-def child_main(read_conn: Any, write_conn: Any) -> None:
+def child_main(read_conn: Any, write_conn: Any, rpc_conn: Any | None = None) -> None:
     """Subprocess body — wired up by :class:`Engine` in the parent.
 
     ``read_conn`` / ``write_conn`` are :class:`multiprocessing.connection.Connection`
     objects that survive the spawn handle-inheritance dance (raw FDs do not).
+
+    ``rpc_conn`` is the child-end of the duplex learning RPC pipe (also
+    a Connection). When ``ctx.learning_enabled`` is True we wrap it in an
+    :class:`aether_api.sandbox.rpc.RpcClient` and bind the three learning
+    proxies onto ``ctx``. When False, we bind the NO-OP variants and the
+    pipe is left idle (the parent closes its end on cleanup).
     """
     # 1. Read the parent's pickled payload BEFORE applying any guards.
     #    We need ``pickle`` and ``aether_api.sandbox.ctx`` to load; the
@@ -270,11 +273,57 @@ def child_main(read_conn: Any, write_conn: Any) -> None:
         )
         return
 
-    # 8. Build the MCP proxy and hand control to the user code.
+    # 8. Build the MCP proxy + learning proxies and hand control to the user code.
     try:
+        from aether_api.sandbox.learning_ctx import (
+            EpisodicProxy,
+            NoopEpisodic,
+            NoopQTable,
+            NoopSemantic,
+            QTableProxy,
+            SemanticProxy,
+        )
         from aether_api.sandbox.mcp_proxy import McpProxy
 
         ctx_obj.mcp_proxy = McpProxy(ctx_obj.mcp, dry_run=ctx_obj.dry_run)
+
+        # --- Learning proxies. Even when learning is disabled we attach
+        #     the Noop variants so user code can call ``ctx.qtable.get``
+        #     etc. unconditionally — the contract is "always present,
+        #     sometimes inert".
+        if getattr(ctx_obj, "learning_enabled", False) and rpc_conn is not None:
+            from aether_api.sandbox.rpc import RpcClient
+
+            rpc_client = RpcClient(rpc_conn)
+            ctx_obj.qtable = QTableProxy(
+                _rpc=rpc_client,
+                user_id=ctx_obj.user_id,
+                project_id=ctx_obj.project_id,
+            )
+            ctx_obj.semantic = SemanticProxy(
+                _rpc=rpc_client,
+                user_id=ctx_obj.user_id,
+                project_id=ctx_obj.project_id,
+            )
+            ctx_obj.episodic = EpisodicProxy(
+                _rpc=rpc_client,
+                user_id=ctx_obj.user_id,
+                project_id=ctx_obj.project_id,
+            )
+        else:
+            ctx_obj.qtable = NoopQTable(
+                user_id=ctx_obj.user_id,
+                project_id=ctx_obj.project_id,
+            )
+            ctx_obj.semantic = NoopSemantic(
+                user_id=ctx_obj.user_id,
+                project_id=ctx_obj.project_id,
+            )
+            ctx_obj.episodic = NoopEpisodic(
+                user_id=ctx_obj.user_id,
+                project_id=ctx_obj.project_id,
+            )
+
         result = fn(ctx_obj)
     except MemoryError as exc:
         _finalise(_build_failure("oom", exc, "rlimit:as"))
