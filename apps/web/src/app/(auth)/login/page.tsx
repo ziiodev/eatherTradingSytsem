@@ -68,12 +68,33 @@ export default function LoginPage(): React.JSX.Element {
         handleNavigate();
       }
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
-        setError("Credenciales inválidas. Verifica tu email y contraseña.");
-      } else if (err instanceof ApiError && err.status === 423) {
-        setError("Cuenta bloqueada temporalmente. Inténtalo más tarde.");
+      if (err instanceof ApiError) {
+        // Backend devuelve 401 idéntico para "email no existe" y "password
+        // incorrecto" — práctica estándar anti-email-enumeration.
+        if (err.status === 401) {
+          setError("Email o contraseña incorrectos.");
+        } else if (err.status === 423) {
+          setError(
+            "Cuenta bloqueada temporalmente por demasiados intentos fallidos.",
+          );
+        } else if (err.status === 422) {
+          setError("Datos inválidos. Revisa el email y la contraseña.");
+        } else if (err.status === 404) {
+          setError(
+            "No se pudo contactar con el servidor de autenticación. Revisa el proxy del dev server.",
+          );
+        } else if (err.status >= 500) {
+          setError(
+            "Error en el servidor de autenticación. Inténtalo en unos segundos.",
+          );
+        } else {
+          setError(`Error (${err.status}). Inténtalo de nuevo.`);
+        }
       } else {
-        setError("No se pudo iniciar sesión. Inténtalo de nuevo.");
+        // TypeError / network failure — `fetch` no llegó a recibir respuesta.
+        setError(
+          "Sin conexión con el servidor. Verifica tu red e inténtalo de nuevo.",
+        );
       }
     } finally {
       setSubmitting(false);

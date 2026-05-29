@@ -42,11 +42,64 @@ def _async_url_from_sync(sync_url: str) -> str:
 # ---------------------------------------------------------------------------
 # Database URL — ephemeral Postgres or DATABASE_URL passthrough.
 # ---------------------------------------------------------------------------
+
+
+def _is_dev_database(url: str) -> bool:
+    """Return True iff ``url`` points at the dev database (name='aether').
+
+    Conservative heuristic: parse the path component and check the final
+    segment. SQLAlchemy URLs and PostgreSQL DSNs share the structure
+    ``scheme://user:pass@host:port/dbname?...``.
+    """
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(url)
+        # `path` is `/dbname` (or `/dbname?...` once query is stripped).
+        db_name = parsed.path.lstrip("/").split("?", 1)[0]
+        return db_name == "aether"
+    except Exception:
+        # Be lenient: if we can't parse, don't block.
+        return False
+
 @pytest.fixture(scope="session")
 def database_url() -> Iterator[str]:
-    """Provide an async DB URL for migration / integration tests."""
-    existing = os.environ.get("DATABASE_URL") or os.environ.get("TEST_DATABASE_URL")
+    """Provide an async DB URL for migration / integration tests.
+
+    Priority order:
+      1. ``TEST_DATABASE_URL`` (explicit opt-in for an isolated test DB).
+      2. ``DATABASE_URL`` (fallback for environments without a dedicated
+         test DB — e.g. CI containers that spin one up per job).
+      3. testcontainers Postgres (ephemeral, requires Docker).
+
+    GUARD: if the resolved URL points at a DB whose name is ``aether``
+    (the canonical dev DB), refuse to run. The autouse
+    ``_truncate_mutable_tables`` fixture would wipe alice/bob/seed data
+    on every test — that's a footgun. Create ``aether_test`` and set
+    ``TEST_DATABASE_URL`` instead. The error spells out the fix.
+    """
+    test_url = os.environ.get("TEST_DATABASE_URL")
+    fallback_url = os.environ.get("DATABASE_URL")
+    existing = test_url or fallback_url
     if existing:
+        # Refuse the dev DB unless the caller is explicit about it.
+        if _is_dev_database(existing) and test_url is None:
+            pytest.fail(
+                "\n\n"
+                "Refusing to run tests against the dev database (name='aether').\n"
+                "Tests would TRUNCATE users/sessions/agents/projects/skills/...\n"
+                "wiping your seeded data on every run.\n\n"
+                "Fix: create a separate DB and set TEST_DATABASE_URL.\n"
+                "    docker compose exec postgres \\\n"
+                "      psql -U aether -d postgres \\\n"
+                "      -c 'CREATE DATABASE aether_test OWNER aether;'\n"
+                "    export TEST_DATABASE_URL="
+                "postgresql+asyncpg://aether:dev_only_change_me@localhost:5435/aether_test\n"
+                "    cd apps/api && DATABASE_URL=\"$TEST_DATABASE_URL\" "
+                "uv run alembic upgrade head\n"
+                "    # then re-run pytest in this shell.\n",
+                pytrace=False,
+            )
         # Trust the caller — they configured the URL deliberately.
         os.environ["DATABASE_URL"] = existing
         yield existing
