@@ -68,6 +68,31 @@ During a Sleep Phase: Auditor analyzes trades, Researcher mines failure patterns
 
 When designing storage or config layers, assume Sleep Phase needs: append-only trade history, structured per-agent reflections, and config snapshots with rollback.
 
+#### Learning loop (sleep-learning-loop)
+
+The Sleep Phase is wired to a **persistent learning substrate** — it is not a stateless scheduler. Four tables land in migration `0011_sleep_learning_loop.py`:
+
+- **`q_tables`** — per-project versioned Q-value snapshots. `JSONB table` mapping `state_key → action → q_value`, with `version` monotonically increasing per `project_id` and `UNIQUE (project_id, version)`. Hyperparameters (`alpha_normal`, `alpha_special`, `gamma`) live on the row so a snapshot is fully reproducible from the row alone.
+- **`episodic_memory`** — append-only `(state_key, action, reward, next_state_key, …)` written **event-driven by the Worker at trade-close** via `ctx.episodic.record(...)`. Crash-safe by design: episodes never live in agent RAM. `state_key` is SHA-256 over canonical JSON of the state dict — rejects NaN/Inf/set/tuple/bytes (`learning.q_learning.state_key`).
+- **`semantic_memory`** — long-term "lessons learned" rules with `superseded_by` self-FK lineage; never hard-deleted (only `active=false`). Mined during Step 5b/5c of the deep-sleep synthesis.
+- **`sleep_reports`** — exactly ONE structured outcome row per `sleep_runs` (UNIQUE NOT NULL FK CASCADE). The operator-facing summary of what the sleep run actually changed.
+
+`config_versions` is extended with `q_table_version`, `episodic_count`, `semantic_count` so every config snapshot lineage points at the learning state it was built on. `sleep_reflections.agent_type` CHECK is extended to admit `'orchestrator'` so the Orquestador's synthesis can be persisted as a first-class reflection.
+
+**The 3-write atomic transaction** lives in `sleep/learning_step.py :: _finalize_deep_sleep` (orchestrator-owned). Q-Table version write, `sleep_reports` insert, and `config_versions` promotion (plus the `episodic_memory.consumed_by_sleep_run_id` mark-special UPDATE) all share ONE transaction. If any write fails, all roll back — there is no half-promoted state. The `LearningCache` is invalidated write-through on successful promotion only (rolled-back commits never bump the Prometheus counter `aether_sleep_q_table_promotions_total`).
+
+**Feature flags**: `AETHER_LEARNING_ENABLED` (backend, via `Settings.learning_enabled`) gates the entire learning surface — when off, `_finalize_deep_sleep` short-circuits and the lifespan warm pass skips. `NEXT_PUBLIC_LEARNING_UI_ENABLED` (frontend) gates the Q-Tables / Memoria / Sleep Reports dashboard routes. Both default OFF — operators opt in explicitly.
+
+**Sandbox `ctx` surface (read-only except episodic)**: agent code runs in a sandboxed subprocess and sees only proxies — never SQLAlchemy entities. Reads: `ctx.qtable.get(state_key, action)`, `ctx.qtable.argmax(state_key)`, `ctx.semantic.list(rule_type=...)`. Writes: `ctx.episodic.record(state, action, reward, next_state, ...)` is the **only** write the sandbox can issue against the learning substrate. Q-Table promotion and semantic supersession are reserved to the Orquestador in `_finalize_deep_sleep`.
+
+**Recovery loader**: `learning.recovery.RecoveryLoader` runs on FastAPI lifespan AFTER `recover_stale_runs` and BEFORE optional auto-wake. Idempotent, per-project, user_id-aware — rebuilds the in-process `LearningCache` from disk so a fresh container boot doesn't lose the warm path.
+
+**Classifier extension**: the risk classifier walks only the **TOP-K most frequent states** (sourced from `EpisodicMemoryRepository.top_k_states`) to decide whether a Q-Table mutation should escalate to `alto` — never the full state space. Magnitude fallback handles the cold-start case when `top_k_states` is empty.
+
+**Hard rule — single writer**: the Orquestador is the ONLY component that writes to `q_tables`, `semantic_memory`, and `sleep_reports`. Agents propose via `sleep_reflections` (Worker/Researcher/Auditor reflection rows) and write episodic memory via `ctx.episodic.record(...)`. No exceptions. Do not add new write paths from Worker/Researcher/Auditor into these tables.
+
+The files `docs/FaseMicorSuenoWorker.md`, `docs/FaseSuenoWorker.md`, `docs/FasesSuenoAprendizajeProfundo.md`, and `docs/PersistenciaSueno.md` are **historical source material** — they captured the original product thinking before implementation. The canonical prompt content now lives as rows in the `skills` table with slugs `sleep/micro-worker`, `sleep/deep-worker`, and `sleep/deep-system` and is editable by the operator through the Skills UI. The canonical spec is `specs/sleep-learning` in engram; the persistence shape is `sdd/sleep-learning-loop/spec/db-schema-delta`. When the docs and the skills row disagree, the skills row wins.
+
 ### Multi-tenancy, auth & security
 
 **The system is multi-tenant by design.** Every resource table carries `user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT`. Cross-tenant leakage = sev-1 incident. Rules a future Claude must enforce, not just document:

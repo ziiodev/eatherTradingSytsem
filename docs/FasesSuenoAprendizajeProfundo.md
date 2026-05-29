@@ -1,3 +1,5 @@
+> **Nota (sleep-learning-loop, archivado)**: Este documento es el material fuente histórico. El prompt canónico vive como fila en la tabla `skills` con slug `sleep/deep-system` y es editable por el operador. Ver spec canónico `specs/sleep-learning` en engram.
+
 Estás activando la **FASE DE SUEÑO** del sistema Aether Trading System. 
 
 Esta es una fase crítica de reflexión, análisis y mejora continua. Durante esta fase NO se colocan nuevas órdenes. El objetivo es aprender de la experiencia pasada, actualizar conocimiento y fortalecer el rendimiento futuro del Agente Worker.

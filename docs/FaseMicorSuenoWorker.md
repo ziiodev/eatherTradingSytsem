@@ -1,3 +1,5 @@
+> **Nota (sleep-learning-loop, archivado)**: Este documento es el material fuente histórico. El prompt canónico vive como fila en la tabla `skills` con slug `sleep/micro-worker` y es editable por el operador. Ver spec canónico `specs/sleep-learning` en engram.
+
 Estás activando el **MICRO-SUEÑO** del proyecto [NOMBRE_DEL_PROYECTO].
 
 Esta es una fase corta de reflexión rápida. No se colocan órdenes nuevas. El objetivo es hacer ajustes ligeros y consolidar el aprendizaje reciente.
