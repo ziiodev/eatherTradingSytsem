@@ -57,6 +57,7 @@ import hashlib
 import logging
 import uuid
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Final
 
@@ -73,9 +74,34 @@ logger = logging.getLogger(__name__)
 # Document map — slug → (filesystem path, human title, skill type).
 # ---------------------------------------------------------------------------
 
-#: Repository root resolved from this file's location:
-#: ``apps/api/src/aether_api/sleep/seed.py`` → 5 ``parent`` hops.
-_REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[4]
+
+@lru_cache(maxsize=1)
+def _find_repo_root() -> Path:
+    """Walk upward from this file until we find the repo root.
+
+    The repo root is identified as the first ancestor directory that
+    contains BOTH an ``apps/`` sub-directory AND a ``docs/`` sub-directory.
+    This is robust to the file moving deeper in the tree and to
+    invocations from arbitrary working directories.
+
+    Cached so we only walk the filesystem once per process.
+
+    Raises:
+        RuntimeError: if no ancestor matches both markers — that means
+            the source tree has been reshaped or the file was copied
+            outside the repo, neither of which is a recoverable state.
+    """
+    here = Path(__file__).resolve()
+    for candidate in (here, *here.parents):
+        if (candidate / "apps").is_dir() and (candidate / "docs").is_dir():
+            return candidate
+    raise RuntimeError(
+        f"sleep.seed: could not locate repo root from {here!s}; "
+        "expected an ancestor containing both 'apps/' and 'docs/'."
+    )
+
+
+_REPO_ROOT: Final[Path] = _find_repo_root()
 _DOCS_DIR: Final[Path] = _REPO_ROOT / "docs"
 
 
@@ -248,16 +274,13 @@ async def seed_sleep_prompts(session: AsyncSession) -> SeedResult:
                 )
             except Exception as exc:  # noqa: BLE001 — best-effort per pair.
                 await session.rollback()
-                msg = (
-                    f"seed.upsert_failed user_id={user_id} name={doc.name} err={exc}"
-                )
+                msg = f"seed.upsert_failed user_id={user_id} name={doc.name} err={exc}"
                 logger.warning("sleep.seed: %s", msg)
                 result.errors.append(msg)
 
     await session.commit()
     logger.info(
-        "sleep.seed: inserted=%d updated=%d skipped_operator_edited=%d "
-        "unchanged=%d errors=%d",
+        "sleep.seed: inserted=%d updated=%d skipped_operator_edited=%d unchanged=%d errors=%d",
         result.inserted,
         result.updated,
         result.skipped_operator_edited,
