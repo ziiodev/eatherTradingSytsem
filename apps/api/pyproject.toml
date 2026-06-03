@@ -59,7 +59,7 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.48b0,<1.0",
     "opentelemetry-instrumentation-sqlalchemy>=0.48b0,<1.0",
     "opentelemetry-instrumentation-asgi>=0.48b0,<1.0",
-    "prometheus-fastapi-instrumentator>=7.0,<8.0",
+    "prometheus-fastapi-instrumentator>=7.0,<9.0",
     # Explicit pin for prometheus-client — the sleep-learning-loop metrics
     # module (``aether_api.learning.metrics``) imports Counter/Gauge
     # directly. The instrumentator pulls it in transitively but we name
