@@ -111,7 +111,7 @@ dev = [
     # (used by CI and the Makefile) work without falling back to the slower
     # `uvx` download-on-demand path.
     "ruff>=0.7,<1.0",
-    "mypy>=1.13,<2.0",
+    "mypy>=1.13,<3.0",
 ]
 
 [build-system]
