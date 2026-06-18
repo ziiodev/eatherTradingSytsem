@@ -15,7 +15,7 @@
 #
 # Caching:
 #   - uv:  ~/.cache/uv keyed on apps/api/pyproject.toml.
-#   - pnpm: handled by actions/setup-node@v4 (cache: pnpm).
+#   - pnpm: handled by actions/setup-node@v6 (cache: pnpm).
 #
 # Pinned tool versions live in the env block below so bumps land in one place.
 
@@ -177,7 +177,7 @@ jobs:
           run_install: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -237,7 +237,7 @@ jobs:
           run_install: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: pnpm
