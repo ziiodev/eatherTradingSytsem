@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from aether_api.core.settings import get_settings
 from aether_api.db.session import get_session_maker
-from aether_api.models.project import Project
+from aether_api.models.pair import Pair
 from aether_api.sleep.orchestrator import run_sleep_phase
 
 logger = logging.getLogger(__name__)
@@ -73,17 +73,17 @@ async def _run_scheduled_phase(
             )
 
 
-async def _active_projects(session: AsyncSession) -> Iterable[Project]:
+async def _active_pairs(session: AsyncSession) -> Iterable[Pair]:
     from sqlalchemy import select
 
     result = await session.execute(
-        select(Project).where(Project.status.in_(["active", "maintenance"]))
+        select(Pair).where(Pair.status.in_(["active", "maintenance"]))
     )
     return list(result.scalars().all())
 
 
-def _job_id(project_id: uuid.UUID, phase_type: str) -> str:
-    return f"sleep:{phase_type}:{project_id}"
+def _job_id(pair_id: uuid.UUID, phase_type: str) -> str:
+    return f"sleep:{phase_type}:{pair_id}"
 
 
 async def register_jobs_for_active_projects(
@@ -96,27 +96,27 @@ async def register_jobs_for_active_projects(
     """
     settings = get_settings()
     n = 0
-    for project in await _active_projects(session):
+    for pair in await _active_pairs(session):
         # Micro — IntervalTrigger.
-        micro_id = _job_id(project.id, "micro")
+        micro_id = _job_id(pair.id, "micro")
         scheduler.add_job(
             _run_scheduled_phase,
             trigger=IntervalTrigger(hours=settings.sleep_micro_default_hours),
             id=micro_id,
-            args=[str(project.id), str(project.user_id), "micro"],
+            args=[str(pair.id), str(pair.user_id), "micro"],
             replace_existing=True,
             misfire_grace_time=60 * 30,  # 30 min — a missed Micro is fine to catch up.
         )
         n += 1
         # Profundo — CronTrigger (default 00:00 UTC).
-        profundo_id = _job_id(project.id, "profundo")
+        profundo_id = _job_id(pair.id, "profundo")
         scheduler.add_job(
             _run_scheduled_phase,
             trigger=CronTrigger.from_crontab(
                 settings.sleep_profundo_cron, timezone="UTC"
             ),
             id=profundo_id,
-            args=[str(project.id), str(project.user_id), "profundo"],
+            args=[str(pair.id), str(pair.user_id), "profundo"],
             replace_existing=True,
             misfire_grace_time=60 * 60,  # 1h — Profundo runs in a wide window.
         )

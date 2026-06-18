@@ -23,7 +23,7 @@ from datetime import UTC, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aether_api.models.config_version import ConfigVersion
-from aether_api.repositories.project_repository import ProjectRepository
+from aether_api.repositories.pair_repository import PairRepository
 from aether_api.sleep.repositories import ConfigVersionRepository
 from aether_api.sleep.snapshot import apply_snapshot_to_project
 
@@ -55,13 +55,13 @@ async def apply_version(
       ``decided_at`` + ``applied_at`` populated.
     """
     cv_repo = ConfigVersionRepository(session)
-    proj_repo = ProjectRepository(session)
+    proj_repo = PairRepository(session)
 
     version = await cv_repo.get(version_id)
     if version is None:
         raise ConfigVersionNotFoundError(str(version_id))
 
-    project = await proj_repo.get_for_user(user_id, version.project_id)
+    project = await proj_repo.get_for_user(user_id, version.pair_id)
     if project is None:
         # Belongs to another tenant — preserve the 404-on-cross-tenant
         # contract by raising the same not-found error the router maps.
@@ -95,13 +95,13 @@ async def reject_version(
 ) -> ConfigVersion:
     """Mark a pending version ``rejected``. No project mutation."""
     cv_repo = ConfigVersionRepository(session)
-    proj_repo = ProjectRepository(session)
+    proj_repo = PairRepository(session)
 
     version = await cv_repo.get(version_id)
     if version is None:
         raise ConfigVersionNotFoundError(str(version_id))
 
-    project = await proj_repo.get_for_user(user_id, version.project_id)
+    project = await proj_repo.get_for_user(user_id, version.pair_id)
     if project is None:
         raise ConfigVersionNotFoundError(str(version_id))
 
@@ -138,13 +138,13 @@ async def revert_version(
       so future queries surface the new lineage tip.
     """
     cv_repo = ConfigVersionRepository(session)
-    proj_repo = ProjectRepository(session)
+    proj_repo = PairRepository(session)
 
     version = await cv_repo.get(version_id)
     if version is None:
         raise ConfigVersionNotFoundError(str(version_id))
 
-    project = await proj_repo.get_for_user(user_id, version.project_id)
+    project = await proj_repo.get_for_user(user_id, version.pair_id)
     if project is None:
         raise ConfigVersionNotFoundError(str(version_id))
 
@@ -173,7 +173,7 @@ async def revert_version(
     # a new proposal).
     now = datetime.now(tz=UTC).replace(tzinfo=None)
     new_version = await cv_repo.create(
-        project_id=version.project_id,
+        project_id=version.pair_id,
         snapshot=parent.snapshot,
         risk_class=parent.risk_class,
         status="applied",

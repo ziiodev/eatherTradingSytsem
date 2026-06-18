@@ -1,4 +1,4 @@
-"""End-to-end coverage for /api/projects/{id}/chat/* (Phase 4 of project-chat).
+"""End-to-end coverage for /api/pairs/{id}/chat/* (Phase 4 of project-chat).
 
 Covers all six endpoints. The Anthropic SDK is replaced by an in-process
 fake — the same shape used by ``tests/services/chat/test_stream.py`` —
@@ -192,7 +192,7 @@ def _parse_sse(text_body: str) -> list[tuple[str, dict[str, Any]]]:
 
 
 async def test_list_conversations_requires_auth(app_client) -> None:
-    resp = await app_client.get(f"/api/projects/{uuid.uuid4()}/chat/conversations")
+    resp = await app_client.get(f"/api/pairs/{uuid.uuid4()}/chat/conversations")
     assert resp.status_code == 401
 
 
@@ -214,7 +214,7 @@ async def test_cross_tenant_404_list_conversations(app_client) -> None:
         app_client, email="b@example.com", password="bpasspasspass"
     )
 
-    resp = await app_client.get(f"/api/projects/{project_a}/chat/conversations")
+    resp = await app_client.get(f"/api/pairs/{project_a}/chat/conversations")
     assert resp.status_code == 404
 
 
@@ -231,7 +231,7 @@ async def test_cross_tenant_404_create_conversation(app_client) -> None:
     )
 
     resp = await app_client.post(
-        f"/api/projects/{project_a}/chat/conversations",
+        f"/api/pairs/{project_a}/chat/conversations",
         json={"title": "hijack"},
         headers=_csrf_headers(app_client),
     )
@@ -252,7 +252,7 @@ async def test_cross_tenant_404_get_conversation(app_client) -> None:
     )
 
     resp = await app_client.get(
-        f"/api/projects/{project_a}/chat/conversations/{conv_a}"
+        f"/api/pairs/{project_a}/chat/conversations/{conv_a}"
     )
     assert resp.status_code == 404
 
@@ -280,7 +280,7 @@ async def test_cross_tenant_404_patch_conversation_with_audit(
     )
 
     resp = await app_client.patch(
-        f"/api/projects/{project_a}/chat/conversations/{conv_a}",
+        f"/api/pairs/{project_a}/chat/conversations/{conv_a}",
         json={"title": "hijacked"},
         headers=_csrf_headers(app_client),
     )
@@ -322,7 +322,7 @@ async def test_cross_tenant_404_list_messages(app_client) -> None:
     )
 
     resp = await app_client.get(
-        f"/api/projects/{project_a}/chat/conversations/{conv_a}/messages"
+        f"/api/pairs/{project_a}/chat/conversations/{conv_a}/messages"
     )
     assert resp.status_code == 404
 
@@ -349,7 +349,7 @@ async def test_cross_tenant_404_post_message_with_audit(
     )
 
     resp = await app_client.post(
-        f"/api/projects/{project_a}/chat/conversations/{conv_a}/messages",
+        f"/api/pairs/{project_a}/chat/conversations/{conv_a}/messages",
         json={"content": "hijack"},
         headers=_csrf_headers(app_client),
     )
@@ -386,7 +386,7 @@ async def test_create_and_list_conversation(app_client) -> None:
     project_id = await _seed_project(user)
 
     resp = await app_client.post(
-        f"/api/projects/{project_id}/chat/conversations",
+        f"/api/pairs/{project_id}/chat/conversations",
         json={"title": "primera"},
         headers=_csrf_headers(app_client),
     )
@@ -395,14 +395,14 @@ async def test_create_and_list_conversation(app_client) -> None:
     assert body["title"] == "primera"
     conv_id = body["id"]
 
-    resp = await app_client.get(f"/api/projects/{project_id}/chat/conversations")
+    resp = await app_client.get(f"/api/pairs/{project_id}/chat/conversations")
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 1
     assert data["items"][0]["id"] == conv_id
 
     resp = await app_client.get(
-        f"/api/projects/{project_id}/chat/conversations/{conv_id}"
+        f"/api/pairs/{project_id}/chat/conversations/{conv_id}"
     )
     assert resp.status_code == 200
     detail = resp.json()
@@ -417,7 +417,7 @@ async def test_patch_conversation_rename_and_archive(app_client) -> None:
 
     # Rename.
     resp = await app_client.patch(
-        f"/api/projects/{project_id}/chat/conversations/{conv_id}",
+        f"/api/pairs/{project_id}/chat/conversations/{conv_id}",
         json={"title": "renombrada"},
         headers=_csrf_headers(app_client),
     )
@@ -426,7 +426,7 @@ async def test_patch_conversation_rename_and_archive(app_client) -> None:
 
     # Archive.
     resp = await app_client.patch(
-        f"/api/projects/{project_id}/chat/conversations/{conv_id}",
+        f"/api/pairs/{project_id}/chat/conversations/{conv_id}",
         json={"archived": True},
         headers=_csrf_headers(app_client),
     )
@@ -434,13 +434,13 @@ async def test_patch_conversation_rename_and_archive(app_client) -> None:
     assert resp.json()["archived_at"] is not None
 
     # Default list (archived=False) no longer shows it.
-    resp = await app_client.get(f"/api/projects/{project_id}/chat/conversations")
+    resp = await app_client.get(f"/api/pairs/{project_id}/chat/conversations")
     assert resp.status_code == 200
     assert resp.json()["total"] == 0
 
     # archived=true does.
     resp = await app_client.get(
-        f"/api/projects/{project_id}/chat/conversations?archived=true"
+        f"/api/pairs/{project_id}/chat/conversations?archived=true"
     )
     assert resp.status_code == 200
     assert resp.json()["total"] == 1
@@ -452,7 +452,7 @@ async def test_patch_empty_body_400(app_client) -> None:
     conv_id = await _seed_conversation(user.id, project_id)
 
     resp = await app_client.patch(
-        f"/api/projects/{project_id}/chat/conversations/{conv_id}",
+        f"/api/pairs/{project_id}/chat/conversations/{conv_id}",
         json={},
         headers=_csrf_headers(app_client),
     )
@@ -476,7 +476,7 @@ async def test_post_message_500_when_not_configured(app_client, monkeypatch) -> 
     object.__setattr__(settings, "anthropic_api_key", None)
 
     resp = await app_client.post(
-        f"/api/projects/{project_id}/chat/conversations/{conv_id}/messages",
+        f"/api/pairs/{project_id}/chat/conversations/{conv_id}/messages",
         json={"content": "hola"},
         headers=_csrf_headers(app_client),
     )
@@ -509,7 +509,7 @@ async def test_post_message_409_budget_exceeded(app_client, monkeypatch) -> None
         await session.commit()
 
     resp = await app_client.post(
-        f"/api/projects/{project_id}/chat/conversations/{conv_id}/messages",
+        f"/api/pairs/{project_id}/chat/conversations/{conv_id}/messages",
         json={"content": "hola"},
         headers=_csrf_headers(app_client),
     )
@@ -538,7 +538,7 @@ async def test_post_message_happy_path_sse(app_client, monkeypatch) -> None:
     )
 
     resp = await app_client.post(
-        f"/api/projects/{project_id}/chat/conversations/{conv_id}/messages",
+        f"/api/pairs/{project_id}/chat/conversations/{conv_id}/messages",
         json={"content": "estado, por favor"},
         headers=_csrf_headers(app_client),
     )
@@ -595,7 +595,7 @@ async def test_post_message_tool_use_sse(app_client, monkeypatch) -> None:
     )
 
     resp = await app_client.post(
-        f"/api/projects/{project_id}/chat/conversations/{conv_id}/messages",
+        f"/api/pairs/{project_id}/chat/conversations/{conv_id}/messages",
         json={"content": "estado"},
         headers=_csrf_headers(app_client),
     )
@@ -637,7 +637,7 @@ async def test_post_message_tool_roundtrip_limit_error(app_client, monkeypatch) 
         )
 
     resp = await app_client.post(
-        f"/api/projects/{project_id}/chat/conversations/{conv_id}/messages",
+        f"/api/pairs/{project_id}/chat/conversations/{conv_id}/messages",
         json={"content": "loop"},
         headers=_csrf_headers(app_client),
     )
@@ -701,7 +701,7 @@ async def test_post_message_409_turn_in_progress(app_client, monkeypatch) -> Non
 
     async def _first_request():
         return await app_client.post(
-            f"/api/projects/{project_id}/chat/conversations/{conv_id}/messages",
+            f"/api/pairs/{project_id}/chat/conversations/{conv_id}/messages",
             json={"content": "primero"},
             headers=csrf,
         )
@@ -713,7 +713,7 @@ async def test_post_message_409_turn_in_progress(app_client, monkeypatch) -> Non
 
         # Second concurrent POST → should be refused immediately.
         resp = await app_client.post(
-            f"/api/projects/{project_id}/chat/conversations/{conv_id}/messages",
+            f"/api/pairs/{project_id}/chat/conversations/{conv_id}/messages",
             json={"content": "segundo"},
             headers=csrf,
         )

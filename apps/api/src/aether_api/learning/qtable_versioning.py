@@ -81,7 +81,7 @@ from typing import Any, Literal
 type RiskClass = Literal["bajo", "medio", "alto"]
 
 #: Default lot size used when the project row does not pin one. The
-#: project model (``models/project.py``) does NOT currently carry a
+#: pair model (``models/pair.py``) does NOT currently carry a
 #: ``lot_size_default`` column — the lookup in :func:`_action_implications`
 #: falls back to this constant. Update both sites if the column is added.
 _DEFAULT_LOT_SIZE: float = 1.0

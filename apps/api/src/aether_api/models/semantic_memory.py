@@ -33,9 +33,9 @@ class SemanticMemory(Base):
         server_default=text("gen_random_uuid()"),
     )
 
-    project_id: Mapped[uuid.UUID] = mapped_column(
+    pair_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("projects.id", ondelete="CASCADE"),
+        ForeignKey("pairs.id", ondelete="CASCADE"),
         nullable=False,
     )
 
@@ -69,7 +69,7 @@ class SemanticMemory(Base):
     )
 
     # --- Relations
-    project = relationship("Project", lazy="raise")
+    pair = relationship("Pair", lazy="raise")
     sleep_run = relationship("SleepRun", lazy="raise")
     parent_rule = relationship(
         "SemanticMemory",
@@ -79,6 +79,6 @@ class SemanticMemory(Base):
 
     def __repr__(self) -> str:  # pragma: no cover
         return (
-            f"<SemanticMemory id={self.id} project_id={self.project_id} "
+            f"<SemanticMemory id={self.id} pair_id={self.pair_id} "
             f"rule_type={self.rule_type} active={self.active}>"
         )

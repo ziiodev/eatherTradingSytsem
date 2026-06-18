@@ -27,7 +27,7 @@ from typing import Any
 
 from sqlalchemy import select
 
-from aether_api.models.project import Project
+from aether_api.models.pair import Pair
 from aether_api.models.q_table import QTable
 from aether_api.repositories.base import BaseRepository
 
@@ -48,8 +48,8 @@ class QTableRepository(BaseRepository):
         on read. Reads use the JOIN form below which simply returns
         nothing for non-owners.
         """
-        stmt = select(Project.id).where(
-            Project.id == project_id, Project.user_id == user_id
+        stmt = select(Pair.id).where(
+            Pair.id == project_id, Pair.user_id == user_id
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none() is not None
@@ -72,9 +72,9 @@ class QTableRepository(BaseRepository):
         """
         stmt = (
             select(QTable)
-            .join(Project, Project.id == QTable.project_id)
-            .where(Project.user_id == user_id)
-            .where(QTable.project_id == project_id)
+            .join(Pair, Pair.id == QTable.pair_id)
+            .where(Pair.user_id == user_id)
+            .where(QTable.pair_id == project_id)
             .order_by(QTable.version.desc())
             .limit(limit)
             .offset(offset)
@@ -92,9 +92,9 @@ class QTableRepository(BaseRepository):
         """Return a specific version IFF the caller owns the project."""
         stmt = (
             select(QTable)
-            .join(Project, Project.id == QTable.project_id)
-            .where(Project.user_id == user_id)
-            .where(QTable.project_id == project_id)
+            .join(Pair, Pair.id == QTable.pair_id)
+            .where(Pair.user_id == user_id)
+            .where(QTable.pair_id == project_id)
             .where(QTable.version == version)
         )
         result = await self.session.execute(stmt)
@@ -106,9 +106,9 @@ class QTableRepository(BaseRepository):
         """Return the highest-version row for ``project_id``, or None."""
         stmt = (
             select(QTable)
-            .join(Project, Project.id == QTable.project_id)
-            .where(Project.user_id == user_id)
-            .where(QTable.project_id == project_id)
+            .join(Pair, Pair.id == QTable.pair_id)
+            .where(Pair.user_id == user_id)
+            .where(QTable.pair_id == project_id)
             .order_by(QTable.version.desc())
             .limit(1)
         )
@@ -161,7 +161,7 @@ class QTableRepository(BaseRepository):
             payload.setdefault("__meta__", {}).update(metadata)
 
         row = QTable(
-            project_id=project_id,
+            pair_id=project_id,
             version=version,
             table_data=payload,
             alpha_normal=Decimal(str(learning_rate)),

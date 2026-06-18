@@ -40,7 +40,7 @@ from typing import Any
 from sqlalchemy import func, select
 
 from aether_api.models.order import Order
-from aether_api.models.project import Project
+from aether_api.models.pair import Pair
 from aether_api.repositories.base import BaseRepository
 from aether_api.services import orders_metrics
 
@@ -98,7 +98,7 @@ class OrderRepository(BaseRepository):
         empty results / ``None``, which the routers translate to 404
         without leaking the existence of the resource.
         """
-        stmt = select(Project.id).where(Project.id == project_id, Project.user_id == user_id)
+        stmt = select(Pair.id).where(Pair.id == project_id, Pair.user_id == user_id)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none() is not None
 
@@ -122,7 +122,7 @@ class OrderRepository(BaseRepository):
     ) -> Order:
         """Insert a new order row. Caller MUST commit."""
         order = Order(
-            project_id=project_id,
+            pair_id=project_id,
             user_id=user_id,
             agent_id=agent_id,
             symbol=symbol,
@@ -196,13 +196,13 @@ class OrderRepository(BaseRepository):
         except (TypeError, ValueError):
             return None
 
-        stmt = select(Order).where(Order.project_id == project_id, Order.mt5_ticket == ticket_int)
+        stmt = select(Order).where(Order.pair_id == project_id, Order.mt5_ticket == ticket_int)
         result = await self.session.execute(stmt)
         order = result.scalar_one_or_none()
 
         # Filter out fields that the caller MUST NOT set via upsert.
         # Tenant + identity columns are owned by the upsert call args.
-        protected = {"id", "project_id", "user_id", "mt5_ticket"}
+        protected = {"id", "pair_id", "project_id", "user_id", "mt5_ticket"}
         clean_fields = {k: v for k, v in fields.items() if k not in protected}
 
         if order is None:
@@ -210,7 +210,7 @@ class OrderRepository(BaseRepository):
             # Worker reconciler's contract: status='filled' unless the
             # caller overrides; sl is required at the DB layer.
             defaults: dict[str, Any] = {
-                "project_id": project_id,
+                "pair_id": project_id,
                 "user_id": user_id,
                 "mt5_ticket": ticket_int,
                 "status": clean_fields.pop("status", "filled"),
@@ -240,7 +240,7 @@ class OrderRepository(BaseRepository):
         stmt = (
             select(Order)
             .where(Order.user_id == user_id)
-            .where(Order.project_id == project_id)
+            .where(Order.pair_id == project_id)
             .order_by(Order.created_at.desc(), Order.id.desc())
             .limit(limit)
             .offset(offset)
@@ -257,7 +257,7 @@ class OrderRepository(BaseRepository):
         stmt = (
             select(func.count(Order.id))
             .where(Order.user_id == user_id)
-            .where(Order.project_id == project_id)
+            .where(Order.pair_id == project_id)
         )
         result = await self.session.execute(stmt)
         return int(result.scalar_one() or 0)
@@ -301,7 +301,7 @@ class OrderRepository(BaseRepository):
         # Build the WHERE conjunction once, then re-use for both the
         # paged scalar select and the total-count select.
         conditions = [
-            Order.project_id == project_id,
+            Order.pair_id == project_id,
             Order.user_id == user_id,
         ]
         if symbol is not None:
@@ -373,7 +373,7 @@ class OrderRepository(BaseRepository):
         # primitives already skip ``profit_net is None`` defensively
         # but narrowing here makes the SQL cheaper.
         conditions = [
-            Order.project_id == project_id,
+            Order.pair_id == project_id,
             Order.user_id == user_id,
             Order.status == "closed",
         ]
@@ -412,7 +412,7 @@ class OrderRepository(BaseRepository):
 
         # Closed-trade realised P&L.
         closed_stmt = select(func.coalesce(func.sum(Order.profit_net), 0)).where(
-            Order.project_id == project_id,
+            Order.pair_id == project_id,
             Order.user_id == user_id,
             Order.status == "closed",
         )
@@ -422,7 +422,7 @@ class OrderRepository(BaseRepository):
         # ``filled`` is the canonical open state; ``approved_pending_send``
         # is not on the broker yet (no exposure) so it doesn't count.
         open_stmt = select(func.count(Order.id)).where(
-            Order.project_id == project_id,
+            Order.pair_id == project_id,
             Order.user_id == user_id,
             Order.status == "filled",
         )

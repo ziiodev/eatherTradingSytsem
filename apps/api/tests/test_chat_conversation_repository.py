@@ -52,7 +52,7 @@ async def test_create_and_get_happy_path(app_client) -> None:
         await session.commit()
 
         assert conv.title == "Strategy review"
-        assert conv.project_id == proj_a_id
+        assert conv.pair_id == proj_a_id
         assert conv.user_id == user_a_id
         assert conv.archived_at is None
         assert conv.tokens_in_total == 0

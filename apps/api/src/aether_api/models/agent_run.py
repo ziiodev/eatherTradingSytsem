@@ -60,9 +60,9 @@ class AgentRun(Base):
         ForeignKey("agents.id", ondelete="RESTRICT"),
         nullable=False,
     )
-    project_id: Mapped[uuid.UUID] = mapped_column(
+    pair_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("projects.id", ondelete="RESTRICT"),
+        ForeignKey("pairs.id", ondelete="RESTRICT"),
         nullable=False,
     )
 
@@ -86,7 +86,7 @@ class AgentRun(Base):
     # MUST be explicit in the repository layer).
     user = relationship("User", lazy="raise")
     agent = relationship("Agent", lazy="raise")
-    project = relationship("Project", lazy="raise")
+    pair = relationship("Pair", lazy="raise")
 
     __table_args__ = (
         CheckConstraint(

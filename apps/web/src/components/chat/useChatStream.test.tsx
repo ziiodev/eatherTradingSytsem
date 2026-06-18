@@ -58,7 +58,7 @@ describe("useChatStream", () => {
     fetchMock.mockResolvedValueOnce(mockGetConversation());
 
     const { result } = renderHook(() =>
-      useChatStream({ projectId: PROJECT_ID, conversationId: CONVERSATION_ID }),
+      useChatStream({ pairId: PROJECT_ID, conversationId: CONVERSATION_ID }),
     );
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
@@ -87,7 +87,7 @@ describe("useChatStream", () => {
       );
 
     const { result } = renderHook(() =>
-      useChatStream({ projectId: PROJECT_ID, conversationId: CONVERSATION_ID }),
+      useChatStream({ pairId: PROJECT_ID, conversationId: CONVERSATION_ID }),
     );
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
@@ -130,7 +130,7 @@ describe("useChatStream", () => {
       );
 
     const { result } = renderHook(() =>
-      useChatStream({ projectId: PROJECT_ID, conversationId: CONVERSATION_ID }),
+      useChatStream({ pairId: PROJECT_ID, conversationId: CONVERSATION_ID }),
     );
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
@@ -172,7 +172,7 @@ describe("useChatStream", () => {
       );
 
     const { result } = renderHook(() =>
-      useChatStream({ projectId: PROJECT_ID, conversationId: CONVERSATION_ID }),
+      useChatStream({ pairId: PROJECT_ID, conversationId: CONVERSATION_ID }),
     );
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 

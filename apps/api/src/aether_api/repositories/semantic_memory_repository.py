@@ -22,7 +22,7 @@ import uuid
 
 from sqlalchemy import select, update
 
-from aether_api.models.project import Project
+from aether_api.models.pair import Pair
 from aether_api.models.semantic_memory import SemanticMemory
 from aether_api.repositories.base import BaseRepository
 
@@ -36,8 +36,8 @@ class SemanticMemoryRepository(BaseRepository):
     async def _user_owns_project(
         self, user_id: uuid.UUID, project_id: uuid.UUID
     ) -> bool:
-        stmt = select(Project.id).where(
-            Project.id == project_id, Project.user_id == user_id
+        stmt = select(Pair.id).where(
+            Pair.id == project_id, Pair.user_id == user_id
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none() is not None
@@ -55,9 +55,9 @@ class SemanticMemoryRepository(BaseRepository):
         """Return active rules for ``project_id``, optionally filtered by type."""
         stmt = (
             select(SemanticMemory)
-            .join(Project, Project.id == SemanticMemory.project_id)
-            .where(Project.user_id == user_id)
-            .where(SemanticMemory.project_id == project_id)
+            .join(Pair, Pair.id == SemanticMemory.pair_id)
+            .where(Pair.user_id == user_id)
+            .where(SemanticMemory.pair_id == project_id)
             .where(SemanticMemory.active.is_(True))
         )
         if rule_type is not None:
@@ -96,7 +96,7 @@ class SemanticMemoryRepository(BaseRepository):
             )
 
         row = SemanticMemory(
-            project_id=project_id,
+            pair_id=project_id,
             rule_type=rule_type,
             body=content,
             payload={
@@ -130,13 +130,13 @@ class SemanticMemoryRepository(BaseRepository):
         """
         # Sub-select of projects owned by user — the UPDATE constrains
         # to rules whose project_id is in that set.
-        owned_projects = select(Project.id).where(Project.user_id == user_id)
+        owned_projects = select(Pair.id).where(Pair.user_id == user_id)
 
         stmt = (
             update(SemanticMemory)
             .where(SemanticMemory.id == rule_id)
-            .where(SemanticMemory.project_id == project_id)
-            .where(SemanticMemory.project_id.in_(owned_projects))
+            .where(SemanticMemory.pair_id == project_id)
+            .where(SemanticMemory.pair_id.in_(owned_projects))
             .values(active=False, superseded_by=new_rule_id)
         )
         await self.session.execute(stmt)

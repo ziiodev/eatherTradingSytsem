@@ -1,4 +1,4 @@
-"""``sleep_reports`` data access — tenancy via ``sleep_runs.project_id`` → ``projects.user_id``.
+"""``sleep_reports`` data access — tenancy via ``sleep_runs.pair_id`` → ``projects.user_id``.
 
 There is exactly one ``sleep_reports`` row per ``sleep_runs.id`` (UNIQUE
 FK, enforced at the DB level). Every method goes through a two-hop JOIN
@@ -24,7 +24,7 @@ from typing import Any
 
 from sqlalchemy import select
 
-from aether_api.models.project import Project
+from aether_api.models.pair import Pair
 from aether_api.models.sleep_report import SleepReport
 from aether_api.models.sleep_run import SleepRun
 from aether_api.repositories.base import BaseRepository
@@ -49,9 +49,9 @@ class SleepReportRepository(BaseRepository):
         """
         stmt = (
             select(SleepRun.id)
-            .join(Project, Project.id == SleepRun.project_id)
+            .join(Pair, Pair.id == SleepRun.pair_id)
             .where(SleepRun.id == sleep_run_id)
-            .where(Project.user_id == user_id)
+            .where(Pair.user_id == user_id)
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none() is not None
@@ -66,8 +66,8 @@ class SleepReportRepository(BaseRepository):
         stmt = (
             select(SleepReport)
             .join(SleepRun, SleepRun.id == SleepReport.sleep_run_id)
-            .join(Project, Project.id == SleepRun.project_id)
-            .where(Project.user_id == user_id)
+            .join(Pair, Pair.id == SleepRun.pair_id)
+            .where(Pair.user_id == user_id)
             .where(SleepReport.sleep_run_id == sleep_run_id)
         )
         result = await self.session.execute(stmt)

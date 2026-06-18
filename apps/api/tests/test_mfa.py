@@ -417,13 +417,23 @@ async def test_lockout_after_threshold_bad_totp(app_client):
 # =============================================================================
 # Real-account gate (charter)
 # =============================================================================
-def _project_create_body(name: str, *, account_type: str | None = None) -> dict[str, object]:
-    body: dict[str, object] = {
-        "name": name,
-        "symbol": "EURUSD",
-        "timeframe": "H1",
-        "mcp_url": "http://localhost:8081",
-    }
+# The charter MFA gate moved from the pair (formerly ``projects``) onto
+# the Account (Cuenta) in the accounts-pairs hierarchy — the broker
+# credential block (incl. ``account_type``) now lives on the account.
+async def _make_exchange(client) -> str:
+    resp = await client.post(
+        "/api/exchanges",
+        json={"name": "Demo", "code": "DEMO", "kind": "broker"},
+        headers=_csrf_headers(client),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["id"]
+
+
+def _account_create_body(
+    exchange_id: str, name: str, *, account_type: str | None = None
+) -> dict[str, object]:
+    body: dict[str, object] = {"exchange_id": exchange_id, "name": name}
     if account_type is not None:
         body["account_type"] = account_type
     return body
@@ -432,9 +442,10 @@ def _project_create_body(name: str, *, account_type: str | None = None) -> dict[
 async def test_create_real_account_409_without_mfa(app_client):
     await _seed_user(app_client)
     await _login(app_client, email="alice@example.com", password="correct horse battery staple")
+    ex = await _make_exchange(app_client)
     resp = await app_client.post(
-        "/api/projects",
-        json=_project_create_body("real-test", account_type="real"),
+        "/api/accounts",
+        json=_account_create_body(ex, "real-test", account_type="real"),
         headers=_csrf_headers(app_client),
     )
     assert resp.status_code == 409
@@ -444,9 +455,10 @@ async def test_create_real_account_409_without_mfa(app_client):
 async def test_create_demo_account_allowed_without_mfa(app_client):
     await _seed_user(app_client)
     await _login(app_client, email="alice@example.com", password="correct horse battery staple")
+    ex = await _make_exchange(app_client)
     resp = await app_client.post(
-        "/api/projects",
-        json=_project_create_body("demo-test", account_type="demo"),
+        "/api/accounts",
+        json=_account_create_body(ex, "demo-test", account_type="demo"),
         headers=_csrf_headers(app_client),
     )
     assert resp.status_code == 201, resp.text
@@ -457,9 +469,10 @@ async def test_create_real_account_succeeds_after_mfa(app_client):
     await _enable_mfa_for_user(
         app_client, email="alice@example.com", password="correct horse battery staple"
     )
+    ex = await _make_exchange(app_client)
     resp = await app_client.post(
-        "/api/projects",
-        json=_project_create_body("real-test", account_type="real"),
+        "/api/accounts",
+        json=_account_create_body(ex, "real-test", account_type="real"),
         headers=_csrf_headers(app_client),
     )
     assert resp.status_code == 201, resp.text
@@ -468,15 +481,16 @@ async def test_create_real_account_succeeds_after_mfa(app_client):
 async def test_patch_to_real_account_409_without_mfa(app_client):
     await _seed_user(app_client)
     await _login(app_client, email="alice@example.com", password="correct horse battery staple")
+    ex = await _make_exchange(app_client)
     create = await app_client.post(
-        "/api/projects",
-        json=_project_create_body("demo-test", account_type="demo"),
+        "/api/accounts",
+        json=_account_create_body(ex, "demo-test", account_type="demo"),
         headers=_csrf_headers(app_client),
     )
     assert create.status_code == 201
-    project_id = create.json()["id"]
+    account_id = create.json()["id"]
     resp = await app_client.patch(
-        f"/api/projects/{project_id}",
+        f"/api/accounts/{account_id}",
         json={"account_type": "real"},
         headers=_csrf_headers(app_client),
     )
@@ -487,13 +501,14 @@ async def test_patch_to_real_account_409_without_mfa(app_client):
 async def test_patch_demo_to_real_after_mfa(app_client):
     await _seed_user(app_client)
     await _login(app_client, email="alice@example.com", password="correct horse battery staple")
+    ex = await _make_exchange(app_client)
     create = await app_client.post(
-        "/api/projects",
-        json=_project_create_body("demo-test", account_type="demo"),
+        "/api/accounts",
+        json=_account_create_body(ex, "demo-test", account_type="demo"),
         headers=_csrf_headers(app_client),
     )
     assert create.status_code == 201
-    project_id = create.json()["id"]
+    account_id = create.json()["id"]
 
     # Now enable MFA for the same user.
     setup = await app_client.post("/api/me/mfa/setup", headers=_csrf_headers(app_client))
@@ -507,7 +522,7 @@ async def test_patch_demo_to_real_after_mfa(app_client):
     assert verify.status_code == 200
 
     resp = await app_client.patch(
-        f"/api/projects/{project_id}",
+        f"/api/accounts/{account_id}",
         json={"account_type": "real"},
         headers=_csrf_headers(app_client),
     )

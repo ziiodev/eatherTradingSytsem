@@ -3,7 +3,7 @@
 Covers:
 
 * ``ChatDispatchContext`` is frozen and carries the expected fields.
-* ``build_project_snapshot`` returns the expected shape for an owned
+* ``build_pair_snapshot`` returns the expected shape for an owned
   project, with sleep_run + Q-Table + active rules surfaced.
 * Cross-tenant ``project_id`` returns a neutral snapshot (``project``
   is ``None``, counts are zero) so existence is not disclosed.
@@ -47,7 +47,7 @@ def test_chat_dispatch_context_is_frozen() -> None:
 
     ctx = ChatDispatchContext(
         user_id=uuid.uuid4(),
-        project_id=uuid.uuid4(),
+        pair_id=uuid.uuid4(),
         conversation_id=uuid.uuid4(),
         db_session_factory=lambda: None,  # type: ignore[arg-type]
         llm_client=object(),
@@ -68,7 +68,7 @@ def test_chat_dispatch_context_defaults() -> None:
 
     ctx = ChatDispatchContext(
         user_id=uuid.uuid4(),
-        project_id=uuid.uuid4(),
+        pair_id=uuid.uuid4(),
         conversation_id=uuid.uuid4(),
         db_session_factory=lambda: None,  # type: ignore[arg-type]
         llm_client=object(),
@@ -78,57 +78,57 @@ def test_chat_dispatch_context_defaults() -> None:
 
 
 # ---------------------------------------------------------------------------
-# build_project_snapshot
+# build_pair_snapshot
 # ---------------------------------------------------------------------------
 
 
-async def test_build_project_snapshot_owned(app_client) -> None:
+async def test_build_pair_snapshot_owned(app_client) -> None:
     from aether_api.db.session import get_session_maker
-    from aether_api.services.chat.context import build_project_snapshot
+    from aether_api.services.chat.context import build_pair_snapshot
 
     user_a_id, _, proj_a_id, _ = await _seed_two_users_two_projects()
 
     maker = get_session_maker()
     async with maker() as session:
-        snap = await build_project_snapshot(
-            session, user_id=user_a_id, project_id=proj_a_id
+        snap = await build_pair_snapshot(
+            session, user_id=user_a_id, pair_id=proj_a_id
         )
 
-    assert snap["project"] is not None
-    assert snap["project"]["id"] == str(proj_a_id)
-    assert snap["project"]["name"] == "proj-a"
-    assert snap["project"]["symbol"] == "EURUSD"
+    assert snap["pair"] is not None
+    assert snap["pair"]["id"] == str(proj_a_id)
+    assert snap["pair"]["name"] == "proj-a"
+    assert snap["pair"]["symbol"] == "EURUSD"
     assert snap["latest_sleep_report"] is None
     assert snap["active_rules_count"] == 0
     assert snap["q_table_version"] is None
     assert "generated_at" in snap
 
 
-async def test_build_project_snapshot_cross_tenant(app_client) -> None:
+async def test_build_pair_snapshot_cross_tenant(app_client) -> None:
     from aether_api.db.session import get_session_maker
-    from aether_api.services.chat.context import build_project_snapshot
+    from aether_api.services.chat.context import build_pair_snapshot
 
     user_a_id, _, _, proj_b_id = await _seed_two_users_two_projects()
 
     maker = get_session_maker()
     async with maker() as session:
-        snap = await build_project_snapshot(
-            session, user_id=user_a_id, project_id=proj_b_id
+        snap = await build_pair_snapshot(
+            session, user_id=user_a_id, pair_id=proj_b_id
         )
 
-    assert snap["project"] is None
+    assert snap["pair"] is None
     assert snap["active_rules_count"] == 0
     assert snap["q_table_version"] is None
     assert "generated_at" in snap
 
 
-async def test_build_project_snapshot_with_qtable_and_rule(app_client) -> None:
+async def test_build_pair_snapshot_with_qtable_and_rule(app_client) -> None:
     from aether_api.db.session import get_session_maker
     from aether_api.repositories.q_table_repository import QTableRepository
     from aether_api.repositories.semantic_memory_repository import (
         SemanticMemoryRepository,
     )
-    from aether_api.services.chat.context import build_project_snapshot
+    from aether_api.services.chat.context import build_pair_snapshot
 
     user_a_id, _, proj_a_id, _ = await _seed_two_users_two_projects()
 
@@ -154,8 +154,8 @@ async def test_build_project_snapshot_with_qtable_and_rule(app_client) -> None:
         await session.commit()
 
     async with maker() as session:
-        snap = await build_project_snapshot(
-            session, user_id=user_a_id, project_id=proj_a_id
+        snap = await build_pair_snapshot(
+            session, user_id=user_a_id, pair_id=proj_a_id
         )
 
     assert snap["q_table_version"] == 1
@@ -170,7 +170,7 @@ async def test_build_project_snapshot_with_qtable_and_rule(app_client) -> None:
 def test_build_system_prompt_two_blocks_with_cache_control() -> None:
     from aether_api.services.chat.context import build_system_prompt
 
-    snapshot = {"project": None, "active_rules_count": 0}
+    snapshot = {"pair": None, "active_rules_count": 0}
     blocks = build_system_prompt(snapshot)
 
     assert isinstance(blocks, list)
@@ -192,8 +192,8 @@ def test_build_system_prompt_block1_stable_across_calls() -> None:
     """Prompt caching demands byte-identical block 1 across requests."""
     from aether_api.services.chat.context import build_system_prompt
 
-    blocks1 = build_system_prompt({"project": None})
-    blocks2 = build_system_prompt({"project": "different snapshot"})
+    blocks1 = build_system_prompt({"pair": None})
+    blocks2 = build_system_prompt({"pair": "different snapshot"})
 
     # Block 1 invariant — must NOT change even when block 2 changes.
     assert blocks1[0]["text"] == blocks2[0]["text"]
@@ -206,7 +206,7 @@ def test_build_system_prompt_snapshot_structure() -> None:
     """The system-prompt structure is a stable contract — snapshot it."""
     from aether_api.services.chat.context import build_system_prompt
 
-    blocks = build_system_prompt({"project": None})
+    blocks = build_system_prompt({"pair": None})
 
     # Block 1 — static, cached. Snapshot the keys + cache_control.
     block1 = blocks[0]

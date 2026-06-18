@@ -22,7 +22,7 @@ from sqlalchemy import and_, func, select, update
 
 from aether_api.models.chat_conversation import ChatConversation
 from aether_api.models.chat_message import ChatMessage
-from aether_api.models.project import Project
+from aether_api.models.pair import Pair
 from aether_api.repositories.base import BaseRepository
 
 
@@ -37,8 +37,8 @@ class ChatMessageRepository(BaseRepository):
     ) -> bool:
         stmt = (
             select(ChatConversation.id)
-            .join(Project, Project.id == ChatConversation.project_id)
-            .where(Project.user_id == user_id)
+            .join(Pair, Pair.id == ChatConversation.pair_id)
+            .where(Pair.user_id == user_id)
             .where(ChatConversation.id == conversation_id)
         )
         result = await self.session.execute(stmt)
@@ -191,8 +191,8 @@ class ChatMessageRepository(BaseRepository):
             .join(
                 ChatConversation, ChatConversation.id == ChatMessage.conversation_id
             )
-            .join(Project, Project.id == ChatConversation.project_id)
-            .where(Project.user_id == user_id)
+            .join(Pair, Pair.id == ChatConversation.pair_id)
+            .where(Pair.user_id == user_id)
             .where(ChatMessage.conversation_id == conversation_id)
             .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
             .limit(limit)
@@ -206,8 +206,8 @@ class ChatMessageRepository(BaseRepository):
             .join(
                 ChatConversation, ChatConversation.id == ChatMessage.conversation_id
             )
-            .join(Project, Project.id == ChatConversation.project_id)
-            .where(Project.user_id == user_id)
+            .join(Pair, Pair.id == ChatConversation.pair_id)
+            .where(Pair.user_id == user_id)
             .where(ChatMessage.conversation_id == conversation_id)
         )
         total_result = await self.session.execute(count_stmt)

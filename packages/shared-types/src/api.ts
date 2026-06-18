@@ -4,6 +4,90 @@
  */
 
 export interface paths {
+    "/.well-known/jwks.json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * JSON Web Key Set for RS256 access-token verification
+         * @description Return the JWK Set wrapping the active RS256 public key.
+         *
+         *     Response shape::
+         *
+         *         {
+         *           "keys": [
+         *             {"kty": "RSA", "use": "sig", "alg": "RS256",
+         *              "kid": "<derived>", "n": "<b64url>", "e": "<b64url>"}
+         *           ]
+         *         }
+         */
+        get: operations["jwks__well_known_jwks_json_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Accounts */
+        get: operations["list_accounts_api_accounts_get"];
+        put?: never;
+        /** Create Account */
+        post: operations["create_account_api_accounts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Account */
+        get: operations["get_account_api_accounts__account_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Account */
+        delete: operations["delete_account_api_accounts__account_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Account */
+        patch: operations["patch_account_api_accounts__account_id__patch"];
+        trace?: never;
+    };
+    "/api/accounts/{account_id}/pairs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Account Pairs */
+        get: operations["list_account_pairs_api_accounts__account_id__pairs_get"];
+        put?: never;
+        /** Create Account Pair */
+        post: operations["create_account_pair_api_accounts__account_id__pairs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agents": {
         parameters: {
             query?: never;
@@ -14,7 +98,8 @@ export interface paths {
         /** List Agents */
         get: operations["list_agents_api_agents_get"];
         put?: never;
-        post?: never;
+        /** Create Agent */
+        post: operations["create_agent_api_agents_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -32,7 +117,132 @@ export interface paths {
         get: operations["get_agent_api_agents__agent_id__get"];
         put?: never;
         post?: never;
+        /** Delete Agent */
+        delete: operations["delete_agent_api_agents__agent_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Agent */
+        patch: operations["patch_agent_api_agents__agent_id__patch"];
+        trace?: never;
+    };
+    "/api/agents/{agent_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive Agent */
+        post: operations["archive_agent_api_agents__agent_id__archive_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/{agent_id}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Agent
+         * @description Execute ``agents.logica`` inside the sandbox.
+         *
+         *     Cross-tenant model: the agent AND project MUST both belong to
+         *     ``current_user`` (and to each other). Any mismatch returns 404 — the
+         *     non-disclosure contract from ``specs/multi-tenancy`` applies to both
+         *     referents, NOT just the URL path parameter.
+         *
+         *     Feature-flag: returns 503 with ``{detail: "sandbox not enabled"}``
+         *     when ``settings.agent_sandbox_enabled`` is False. Admin-only;
+         *     non-admins get 403 from the ``admin_required`` dependency.
+         */
+        post: operations["run_agent_api_agents__agent_id__run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/{agent_id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent Runs
+         * @description Return the caller's recent runs of ``agent_id``, newest first.
+         *
+         *     Cross-tenant agent_id returns 404 — same non-disclosure contract as
+         *     the rest of the resource. Listing is open to any authenticated owner
+         *     (NOT just admins) so non-admin operators can still see their own
+         *     history; the *execute* surface is admin-only.
+         */
+        get: operations["list_agent_runs_api_agents__agent_id__runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/{agent_id}/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent Skills
+         * @description List skills attached to ``agent_id`` (newest binding first).
+         *
+         *     Cross-tenant agent_id returns 404 — non-disclosure applies.
+         */
+        get: operations["list_agent_skills_api_agents__agent_id__skills_get"];
+        put?: never;
+        /**
+         * Attach Skill To Agent
+         * @description Attach ``payload.skill_id`` to ``agent_id``.
+         *
+         *     * Either endpoint not owned by ``current_user`` → 404.
+         *     * Already attached → 409 with ``code = "skill_already_attached"``.
+         */
+        post: operations["attach_skill_to_agent_api_agents__agent_id__skills_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/{agent_id}/skills/{skill_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Detach Skill From Agent
+         * @description Detach ``skill_id`` from ``agent_id``.
+         *
+         *     * Either endpoint not owned by ``current_user`` → 404.
+         *     * Binding does not exist → 404 (same non-disclosure contract).
+         */
+        delete: operations["detach_skill_from_agent_api_agents__agent_id__skills__skill_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -56,6 +266,46 @@ export interface paths {
          *     and :func:`aether_api.auth.passwords.dummy_hash`.
          */
         post: operations["login_api_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/login/mfa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Login Mfa
+         * @description Complete the MFA two-step. Mint real cookies on success.
+         *
+         *     Contract:
+         *
+         *     * The caller MUST present the ``aether_mfa_pending`` cookie that
+         *       ``/api/auth/login`` set when it saw ``user.mfa_enabled``. The
+         *       cookie is path-scoped to this endpoint, so no other endpoint
+         *       sees it.
+         *     * Body MUST include exactly one of ``totp_code`` / ``recovery_code``.
+         *     * Lockout: a wrong code increments ``failed_login_count`` and can
+         *       trigger the same lockout window as a wrong password — that's how
+         *       we keep this endpoint from becoming a 6-digit brute-force oracle.
+         *
+         *     Outcomes:
+         *
+         *     * 200 — pending cookie cleared, real session cookies set.
+         *     * 401 — pending cookie missing/expired/tampered, account locked,
+         *             user disabled, OR the supplied code didn't verify.
+         *
+         *     NO CSRF dependency here — same reasoning as ``/api/auth/login``:
+         *     the caller has no CSRF cookie yet (this endpoint mints them).
+         */
+        post: operations["login_mfa_api_auth_login_mfa_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -153,7 +403,95 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/projects": {
+    "/api/config-versions/{version_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Config Version */
+        post: operations["approve_config_version_api_config_versions__version_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/config-versions/{version_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Config Version */
+        post: operations["reject_config_version_api_config_versions__version_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/config-versions/{version_id}/revert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revert Config Version */
+        post: operations["revert_config_version_api_config_versions__version_id__revert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/exchanges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Exchanges */
+        get: operations["list_exchanges_api_exchanges_get"];
+        put?: never;
+        /** Create Exchange */
+        post: operations["create_exchange_api_exchanges_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/exchanges/{exchange_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Exchange */
+        get: operations["get_exchange_api_exchanges__exchange_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Exchange */
+        delete: operations["delete_exchange_api_exchanges__exchange_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Exchange */
+        patch: operations["patch_exchange_api_exchanges__exchange_id__patch"];
+        trace?: never;
+    };
+    "/api/health": {
         parameters: {
             query?: never;
             header?: never;
@@ -161,10 +499,17 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List Projects
-         * @description List the caller's projects. Ignores any client-supplied user_id.
+         * Api Health
+         * @description Feature-flag advertisement consumed by the frontend.
+         *
+         *     Returns the subset of server-side feature flags the dashboard
+         *     needs to decide which UI affordances to render. The flags are
+         *     AND-ed with their hard preconditions (e.g. ``chat_enabled``
+         *     requires both ``settings.chat_enabled`` AND a configured
+         *     Anthropic API key) so the UI never lights up a surface that
+         *     the backend will then 503.
          */
-        get: operations["list_projects_api_projects_get"];
+        get: operations["api_health_api_health_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -173,7 +518,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/projects/{project_id}": {
+    "/api/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Profile
+         * @description Update display_name and/or avatar_url for the caller.
+         *
+         *     The Pydantic model gives us:
+         *
+         *     * length caps (1..100 / 0..2048)
+         *     * scheme-only http(s) validation on ``avatar_url``
+         *     * 422 on unknown fields via ``extra = "forbid"``
+         *
+         *     Pydantic's "field unset" tracking distinguishes ``{"display_name": null}``
+         *     (clear it) from ``{}`` (leave it alone) — that's what
+         *     ``fields_set`` does for us.
+         */
+        patch: operations["update_profile_api_me_patch"];
+        trace?: never;
+    };
+    "/api/me/audit-log": {
         parameters: {
             query?: never;
             header?: never;
@@ -181,12 +556,1221 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Project
-         * @description Fetch one project by id. 404 if not found OR not owned (no leak).
+         * List Audit Log
+         * @description Return the caller's audit history (newest-first, offset paginated).
          */
-        get: operations["get_project_api_projects__project_id__get"];
+        get: operations["list_audit_log_api_me_audit_log_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/email/change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change Email
+         * @description Change the caller's email after verifying the current password.
+         *
+         *     Hard rules:
+         *
+         *     * Password verify uses :func:`verify_password` (argon2id, constant
+         *       wall-clock cost). 401 on mismatch — no enumeration risk because
+         *       we're authenticated already.
+         *     * New email is normalised to lowercase before the unique-index check
+         *       (matches the ``users_email_lower`` DB constraint).
+         *     * On a collision with an existing row → 409 with a stable detail.
+         *     * ``email_verified_at`` is set to NULL — the new address is unverified
+         *       by definition. v1 has no SMTP, so re-verification lives in a future
+         *       change.
+         */
+        post: operations["change_email_api_me_email_change_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/mfa/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Disable Mfa
+         * @description Turn MFA off. Requires BOTH the password and a current TOTP code.
+         *
+         *     Two factors are mandatory:
+         *
+         *     * Password — argon2id verify; defeats a session-cookie thief.
+         *     * TOTP    — defeats a password-only thief.
+         *
+         *     On success: ``mfa_enabled=false``, ``mfa_secret_ref=null``, all
+         *     recovery code rows deleted. The endpoint is idempotent on a user
+         *     who already has MFA off only insofar as the password+TOTP both
+         *     validate — we still 409 because the caller's mental model is wrong
+         *     ("disable" on an already-off account is a UI bug).
+         */
+        post: operations["disable_mfa_api_me_mfa_disable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/mfa/recovery-codes/regenerate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Regenerate Recovery Codes
+         * @description Mint a fresh batch of 10 recovery codes; invalidate any previous batch.
+         *
+         *     Requires the current password as a high-friction gate — regenerating
+         *     is a credential rotation and we don't want a stolen access cookie to
+         *     silently swap codes a real user is relying on.
+         *
+         *     Returns the plaintext list exactly once; downstream calls only see
+         *     argon2id hashes.
+         */
+        post: operations["regenerate_recovery_codes_api_me_mfa_recovery_codes_regenerate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/mfa/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Setup Mfa
+         * @description Generate a TOTP secret, encrypt it, store the ciphertext, return the QR.
+         *
+         *     Rules:
+         *
+         *     * Forbidden when MFA is already enabled → 409 (caller must disable
+         *       first to re-enrol).
+         *     * Allowed when ``mfa_secret_ref`` is already populated but
+         *       ``mfa_enabled=false`` (abandoned setup) — a fresh secret is
+         *       generated and overwrites the previous one.
+         *     * The plaintext secret is returned in ``secret_b32`` so the user can
+         *       paste it into an authenticator that doesn't support QR scanning.
+         *       It is NEVER stored in plaintext.
+         */
+        post: operations["setup_mfa_api_me_mfa_setup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/mfa/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Mfa Setup
+         * @description Confirm enrollment with a fresh TOTP code, then mint recovery codes.
+         *
+         *     Outcomes:
+         *
+         *     * 400 (``MFA_NOT_SETUP``) — no ``mfa_secret_ref`` yet; caller must
+         *       hit /setup first.
+         *     * 409 (``MFA_ALREADY_ENABLED``) — re-verifying once enabled is a
+         *       no-op caller error.
+         *     * 401 (``INVALID_TOTP_CODE``) — code did not validate against the
+         *       stored secret (±1 step window).
+         *     * 200 — ``mfa_enabled`` flipped to True, 10 recovery codes returned
+         *       ONCE. The same response body is also the only moment they are
+         *       visible in plaintext.
+         */
+        post: operations["verify_mfa_setup_api_me_mfa_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/password/change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change Password
+         * @description Change the caller's password, optionally bulk-revoke other sessions, rotate current.
+         *
+         *     Order of operations (single transaction — all-or-nothing):
+         *
+         *     1. Verify ``current_password`` against ``users.password_hash``.
+         *     2. Rehash ``new_password`` with argon2id (charter floor parameters).
+         *     3. ``UPDATE users SET password_hash, updated_at``.
+         *     4. If ``sign_out_others`` is true: revoke every active session
+         *        belonging to the user *except* the caller's current one.
+         *     5. Always rotate the caller's current session — revoke the old row
+         *        and insert a new (refresh_hash, expires_at) pair, then refresh
+         *        cookies. Mirrors ``POST /api/auth/refresh`` so a successful
+         *        password change leaves the caller authenticated.
+         *
+         *     Any failure rolls everything back — the user keeps their old password
+         *     AND their old refresh token, so a half-applied change cannot lock them
+         *     out.
+         */
+        post: operations["change_password_api_me_password_change_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Sessions
+         * @description List the caller's sessions ordered ``issued_at DESC, id DESC``.
+         *
+         *     Pagination is keyset / seek — the cursor encodes the
+         *     ``(issued_at, id)`` of the last row returned. The ``is_current`` flag
+         *     is derived server-side by hashing the request's refresh cookie and
+         *     matching it against ``refresh_token_hash``. Never trust the client.
+         */
+        get: operations["list_sessions_api_me_sessions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/sessions/revoke-others": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke Other Sessions
+         * @description Revoke every active session for the caller except the current one.
+         *
+         *     If there's no resolvable current session (refresh cookie missing or
+         *     already dead) we still proceed by revoking ALL active rows and
+         *     clearing the now-orphaned cookies — the caller is effectively logged
+         *     out, which matches the user's intent ("kill anything that isn't me").
+         */
+        post: operations["revoke_other_sessions_api_me_sessions_revoke_others_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/sessions/{session_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke Session
+         * @description Revoke one of the caller's own sessions.
+         *
+         *     Outcomes:
+         *
+         *     * 204 — row revoked (or already revoked — idempotent).
+         *     * 400 (``use_logout_instead``) — the target id matches the caller's
+         *       current session. We refuse here so the UI doesn't silently log
+         *       the user out of the tab they're staring at; the dedicated
+         *       ``POST /api/auth/logout`` path is the documented way to end the
+         *       current session.
+         *     * 404 — no such session, or it belongs to another user. Cross-tenant
+         *       denial returns 404, never 403, per the project's auth rules.
+         */
+        post: operations["revoke_session_api_me_sessions__session_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Pairs
+         * @description List the caller's pairs. Ignores any client-supplied user_id.
+         *
+         *     Pagination is offset/limit. See ``pair_repository`` docstring for
+         *     the planned cursor migration path.
+         */
+        get: operations["list_pairs_api_pairs_get"];
+        put?: never;
+        /**
+         * Create Pair
+         * @description Create a pair owned by the current user.
+         *
+         *     Status is hard-coded to ``inactive`` (the DDL default). The caller
+         *     must drive it through the lifecycle endpoints to reach any other
+         *     state — this prevents accidentally publishing an active pair on
+         *     a typo and matches the state machine's "new rows enter via inactive
+         *     edge" invariant.
+         */
+        post: operations["create_pair_api_pairs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pair
+         * @description Fetch one pair by id. 404 if not found OR not owned (no leak).
+         */
+        get: operations["get_pair_api_pairs__pair_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Pair
+         * @description Hard delete. Allowed only when the pair is deletable (inactive | stopped).
+         *
+         *     Returns 404 if not found / not owned (no existence leak), 409 if
+         *     found but not in a deletable state.
+         */
+        delete: operations["delete_pair_api_pairs__pair_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Pair
+         * @description Partial update of non-lifecycle fields.
+         *
+         *     * Unknown / forbidden fields → 400 (via Pydantic ``extra=forbid``).
+         *     * Empty body → 400 (must include at least one field).
+         *     * Not found / not owned → 404.
+         *     * Name collision with another pair of the same tenant → 409.
+         */
+        patch: operations["patch_pair_api_pairs__pair_id__patch"];
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Project Account */
+        get: operations["get_project_account_api_pairs__pair_id__account_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate Pair */
+        post: operations["activate_pair_api_pairs__pair_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Project Approvals */
+        get: operations["list_project_approvals_api_pairs__pair_id__approvals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/approvals/{approval_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Project Approval */
+        post: operations["approve_project_approval_api_pairs__pair_id__approvals__approval_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/approvals/{approval_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Project Approval */
+        post: operations["reject_project_approval_api_pairs__pair_id__approvals__approval_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/build": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Build Pair Image
+         * @description Render + build the pair image via the proxy.
+         *
+         *     Writes a ``container_events`` row regardless of outcome.
+         */
+        post: operations["build_pair_image_api_pairs__pair_id__build_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/candles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Project Candles */
+        get: operations["get_project_candles_api_pairs__pair_id__candles_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/chat/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Conversations
+         * @description List the pair's conversations. ``archived=False`` is the default.
+         */
+        get: operations["list_conversations_api_pairs__pair_id__chat_conversations_get"];
+        put?: never;
+        /**
+         * Create Conversation
+         * @description Create a new conversation under ``pair_id``.
+         *
+         *     ``title`` defaults to ``"(sin título)"`` via the DB server_default
+         *     when the caller omits it. ``model_override`` is whitelisted at the
+         *     DTO layer and stored in ``meta_data`` for later turns to read.
+         */
+        post: operations["create_conversation_api_pairs__pair_id__chat_conversations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/chat/conversations/{conversation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Conversation
+         * @description Return the conversation header plus the last ``last`` messages.
+         */
+        get: operations["get_conversation_api_pairs__pair_id__chat_conversations__conversation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Conversation
+         * @description Rename and/or soft-archive a conversation.
+         *
+         *     Body keys are independent:
+         *
+         *     * ``title`` (non-empty string) — renames the conversation.
+         *     * ``archived=true`` — stamps ``archived_at = NOW()``. ``archived=false``
+         *       is currently a no-op (the v1 spec does not include unarchive).
+         *
+         *     Sending an empty body raises 400.
+         */
+        patch: operations["patch_conversation_api_pairs__pair_id__chat_conversations__conversation_id__patch"];
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/chat/conversations/{conversation_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Messages
+         * @description Return the conversation's messages, chronologically ascending.
+         */
+        get: operations["list_messages_api_pairs__pair_id__chat_conversations__conversation_id__messages_get"];
+        put?: never;
+        /**
+         * Post Message
+         * @description Stream one assistant turn as Server-Sent Events.
+         *
+         *     The pipeline:
+         *
+         *     1. 401 if no session (handled by :func:`current_user`).
+         *     2. 404 if the pair or conversation does not belong to the caller.
+         *        Cross-tenant write attempts emit a ``chat.cross_tenant_write_denied``
+         *        audit row.
+         *     3. 500 ``CHAT_NOT_CONFIGURED`` if the Anthropic API key is missing.
+         *     4. 409 ``CHAT_TURN_IN_PROGRESS`` if another turn already holds the
+         *        conversation's advisory lock.
+         *     5. 409 ``CHAT_BUDGET_EXCEEDED`` if cumulative tokens ≥ 500k.
+         *     6. Stream ``token`` / ``tool_use`` / ``tool_result`` / ``turn_done`` /
+         *        ``error`` SSE frames from :func:`generate_sse_events`.
+         */
+        post: operations["post_message_api_pairs__pair_id__chat_conversations__conversation_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/container": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Pair Container */
+        delete: operations["remove_pair_container_api_pairs__pair_id__container_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/container/create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Pair Container */
+        post: operations["create_pair_container_api_pairs__pair_id__container_create_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/container/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Pair Container Events
+         * @description Paginated, newest-first feed of container_events for the pair.
+         */
+        get: operations["list_pair_container_events_api_pairs__pair_id__container_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/container/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pair Container Logs
+         * @description Return the tail of the pair container's stdout+stderr.
+         *
+         *     GET — does NOT require CSRF (idempotent read). The infraestructura
+         *     panel polls this every 5 s with ``tail=200`` by default; the
+         *     upper bound of 2000 caps abuse.
+         */
+        get: operations["get_pair_container_logs_api_pairs__pair_id__container_logs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/container/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pause Pair Container */
+        post: operations["pause_pair_container_api_pairs__pair_id__container_pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/container/recreate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recreate Pair Container */
+        post: operations["recreate_pair_container_api_pairs__pair_id__container_recreate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/container/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Pair Container */
+        post: operations["start_pair_container_api_pairs__pair_id__container_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/container/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop Pair Container */
+        post: operations["stop_pair_container_api_pairs__pair_id__container_stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/dockerfile/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Dockerfile
+         * @description Render the default Dockerfile for ``pair_id`` without side effects.
+         *
+         *     Returns ``text/plain`` with the rendered Dockerfile body. Deterministic:
+         *     the same pair row produces a byte-identical body across calls.
+         *
+         *     Errors:
+         *       * 404 — pair not found / not owned.
+         *       * 422 — a field contains a forbidden character (the response body
+         *               names the offending field + value via the strict allowlist
+         *               in :mod:`aether_api.docker_control.sanitize`).
+         */
+        post: operations["preview_dockerfile_api_pairs__pair_id__dockerfile_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/episodic-memory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Episodic Memory
+         * @description Return episodes for ``pair_id`` filtered by time window + state_key.
+         *
+         *     Defaults:
+         *       * ``since`` = ``now - 7 days``
+         *       * ``until`` = ``now``
+         *
+         *     404 on cross-tenant. ``total`` reflects the page length (we don't
+         *     issue a second COUNT query — pagination is offset/limit anyway).
+         */
+        get: operations["list_episodic_memory_api_pairs__pair_id__episodic_memory_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Project History */
+        get: operations["get_project_history_api_pairs__pair_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/maintenance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Maintenance Pair */
+        post: operations["maintenance_pair_api_pairs__pair_id__maintenance_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/mark-error": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark Error Pair */
+        post: operations["mark_error_pair_api_pairs__pair_id__mark_error_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/operativa/account-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Operativa Account Summary
+         * @description Operativa: combined MCP account state + DB-realised P&L.
+         *
+         *     Contract (per ``operativa-live`` spec):
+         *
+         *     * Always returns 200. NEVER returns 5xx on MCP failure — the
+         *       degraded path (``mcp_status='unavailable'``, MCP fields ``None``)
+         *       is a first-class flow because the operator surface must remain
+         *       usable when the broker leg is down.
+         *     * MCP-side fields (``equity``, ``balance``, ``margin_used``,
+         *       ``margin_free``, ``current_drawdown``) come from a live
+         *       ``mt5_get_account`` call; they are ``None`` when MCP is
+         *       unreachable.
+         *     * DB-side P&L fields (``pnl_day``, ``pnl_week``, ``pnl_month``)
+         *       always compute — they sum ``profit_net`` across closed orders
+         *       whose ``close_time`` falls inside the rolling window measured
+         *       back from ``source_at``.
+         *     * Tenant-scoped: cross-tenant returns 404 (no existence leak).
+         */
+        get: operations["get_operativa_account_summary_api_pairs__pair_id__operativa_account_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/operativa/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Operativa Orders
+         * @description Operativa: filtered, paginated history slice + aggregated metrics.
+         *
+         *     Window semantics:
+         *
+         *     * ``from`` / ``to`` (ISO datetimes) bracket the ``open_time`` axis.
+         *     * Defaults: ``from = now - 30d``, ``to = now`` — the canonical
+         *       "last month of activity" slice.
+         *
+         *     Filters AND together. ``result`` is interpreted as a sign predicate
+         *     on ``profit_net`` (``win`` → > 0, ``loss`` → < 0). Tenant-scoped:
+         *     cross-tenant returns 404 (pair lookup) before any orders query
+         *     runs.
+         *
+         *     Response carries ``items`` (paged), ``total`` (count under the same
+         *     filters, no pagination), and ``metrics`` aggregated across the SAME
+         *     filter window (NOT just the page) so the dashboard cards reflect
+         *     the user-visible slice end-to-end.
+         */
+        get: operations["list_operativa_orders_api_pairs__pair_id__operativa_orders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Project Orders */
+        get: operations["list_project_orders_api_pairs__pair_id__orders_get"];
+        put?: never;
+        /**
+         * Place Project Order
+         * @description Place a live MT5 order through the risk + approval + audit pipeline.
+         *
+         *     Sequence (HARDCODED — do not reorder):
+         *
+         *     1. Feature-flag gate — 503 if ``AETHER_LIVE_ORDERS_ENABLED`` is off.
+         *     2. Project lookup (404 on cross-tenant).
+         *     3. Fetch account + positions live from MCP (read tools).
+         *     4. RiskEnforcer.check → reject (RiskViolationError) or flag
+         *        ``needs_approval``.
+         *     5. If needs_approval: write audit row(pending) → request approval →
+         *        wait → 202 / 409 / 408.
+         *     6. Write audit row(pending) BEFORE the MCP call.
+         *     7. Call MCP ``mt5_place_order``.
+         *     8. On success: insert ``orders`` row with the broker ticket, update
+         *        audit row to ``filled``.
+         *     9. On failure: update audit row to ``failed`` with the error code.
+         */
+        post: operations["place_project_order_api_pairs__pair_id__orders_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pause Pair */
+        post: operations["pause_pair_api_pairs__pair_id__pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/positions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Project Positions */
+        get: operations["get_project_positions_api_pairs__pair_id__positions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/q-tables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Q Tables
+         * @description List Q-Table versions for ``pair_id`` (newest version first).
+         *
+         *     404 if the pair does not belong to the caller (existence
+         *     non-disclosure). Cross-tenant calls never see a 403.
+         *
+         *     ``total`` reflects ALL versions for the pair (not the page size).
+         */
+        get: operations["list_q_tables_api_pairs__pair_id__q_tables_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/q-tables/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Q Table Version
+         * @description Return a single Q-Table version (full ``table_data`` JSONB included).
+         *
+         *     404 if the version does not exist OR the pair is cross-tenant —
+         *     we don't differentiate, by design.
+         */
+        get: operations["get_q_table_version_api_pairs__pair_id__q_tables__version__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/semantic-memory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Semantic Memory
+         * @description Return semantic rules for ``pair_id``.
+         *
+         *     ``active`` defaults to True. The repository surface (``list_active``)
+         *     only exposes active rows — passing ``active=false`` returns an empty
+         *     list rather than the supersession history (the long-running history
+         *     surface is intentionally out of scope for Phase 9).
+         *
+         *     404 on cross-tenant.
+         */
+        get: operations["list_semantic_memory_api_pairs__pair_id__semantic_memory_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/sleep-runs/{run_id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Sleep Report
+         * @description Return the 1:1 ``sleep_reports`` row for ``run_id``.
+         *
+         *     Added by the sleep-learning-loop change. Tenancy is enforced via the
+         *     ``sleep_runs.pair_id → projects.user_id`` JOIN inside the
+         *     repository, so cross-tenant access never sees the row. The router
+         *     additionally pre-checks ownership of ``pair_id`` so the path
+         *     parameter is also validated.
+         *
+         *     404 (NOT 403) on:
+         *       * pair not owned by caller
+         *       * sleep run does not belong to the pair
+         *       * report row not yet written for this run
+         */
+        get: operations["get_sleep_report_api_pairs__pair_id__sleep_runs__run_id__report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/sleep/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Sleep Runs */
+        get: operations["list_sleep_runs_api_pairs__pair_id__sleep_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/sleep/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Sleep Run */
+        get: operations["get_sleep_run_api_pairs__pair_id__sleep_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/sleep/trigger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trigger Sleep Run
+         * @description Manually fire one Micro / Profundo / Crítico sleep run.
+         *
+         *     Authorisation: admin OR pair owner. Cross-tenant returns 404
+         *     (matches the rest of /api/pairs).
+         */
+        post: operations["trigger_sleep_run_api_pairs__pair_id__sleep_trigger_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pairs/{pair_id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop Pair */
+        post: operations["stop_pair_api_pairs__pair_id__stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Skills */
+        get: operations["list_skills_api_skills_get"];
+        put?: never;
+        /** Create Skill */
+        post: operations["create_skill_api_skills_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/skills/{skill_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Skill */
+        get: operations["get_skill_api_skills__skill_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Skill */
+        delete: operations["delete_skill_api_skills__skill_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Skill */
+        patch: operations["patch_skill_api_skills__skill_id__patch"];
+        trace?: never;
+    };
+    "/api/skills/{skill_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive Skill */
+        post: operations["archive_skill_api_skills__skill_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tools/mql5-to-python": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mql5 To Python
+         * @description Translate MQL5 to Python via Anthropic. One-shot, stateless.
+         */
+        post: operations["mql5_to_python_api_tools_mql5_to_python_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -214,8 +1798,187 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccountCreate */
+        AccountCreate: {
+            /** Account Credential Ref */
+            account_credential_ref?: string | null;
+            /** Account Currency */
+            account_currency?: string | null;
+            /** Account Leverage */
+            account_leverage?: number | null;
+            /** Account Login */
+            account_login?: string | null;
+            /** Account Server */
+            account_server?: string | null;
+            /** Account Type */
+            account_type?: string | null;
+            /** Broker Name */
+            broker_name?: string | null;
+            /** Description */
+            description?: string | null;
+            /**
+             * Exchange Id
+             * Format: uuid
+             */
+            exchange_id: string;
+            /** Meta Data */
+            meta_data?: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+        };
+        /** AccountDetail */
+        AccountDetail: {
+            /** Account Credential Ref */
+            account_credential_ref?: string | null;
+            /** Account Currency */
+            account_currency?: string | null;
+            /** Account Leverage */
+            account_leverage?: number | null;
+            /** Account Login */
+            account_login?: string | null;
+            /** Account Server */
+            account_server?: string | null;
+            /** Account Type */
+            account_type?: string | null;
+            /** Broker Name */
+            broker_name?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Description */
+            description?: string | null;
+            /**
+             * Exchange Id
+             * Format: uuid
+             */
+            exchange_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Meta Data */
+            meta_data?: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** AccountListResponse */
+        AccountListResponse: {
+            /** Items */
+            items: components["schemas"]["AccountDetail"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** AccountPatch */
+        AccountPatch: {
+            /** Account Credential Ref */
+            account_credential_ref?: string | null;
+            /** Account Currency */
+            account_currency?: string | null;
+            /** Account Leverage */
+            account_leverage?: number | null;
+            /** Account Login */
+            account_login?: string | null;
+            /** Account Server */
+            account_server?: string | null;
+            /** Account Type */
+            account_type?: string | null;
+            /** Broker Name */
+            broker_name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Exchange Id */
+            exchange_id?: string | null;
+            /** Meta Data */
+            meta_data?: {
+                [key: string]: unknown;
+            } | null;
+            /** Name */
+            name?: string | null;
+        };
+        /**
+         * AccountSummaryResponse
+         * @description Wire shape for ``GET /operativa/account-summary``.
+         *
+         *     All MCP-derived fields (``equity``, ``balance``, ``margin_used``,
+         *     ``margin_free``, ``current_drawdown``) are ``None`` when the
+         *     per-pair MCP endpoint is unreachable; the DB-side P&L fields
+         *     (``pnl_day``, ``pnl_week``, ``pnl_month``) always compute regardless.
+         *     The endpoint NEVER returns 5xx on MCP failure — it returns 200 with
+         *     ``mcp_status = 'unavailable'`` so the dashboard can degrade.
+         */
+        AccountSummaryResponse: {
+            /** Balance */
+            balance?: string | null;
+            /** Current Drawdown */
+            current_drawdown?: string | null;
+            /** Equity */
+            equity?: string | null;
+            /** Margin Free */
+            margin_free?: string | null;
+            /** Margin Used */
+            margin_used?: string | null;
+            /**
+             * Mcp Status
+             * @enum {string}
+             */
+            mcp_status: "available" | "unavailable";
+            /** Pnl Day */
+            pnl_day: string;
+            /** Pnl Month */
+            pnl_month: string;
+            /** Pnl Week */
+            pnl_week: string;
+            /**
+             * Source At
+             * Format: date-time
+             */
+            source_at: string;
+        };
+        /** AgentArchiveResponse */
+        AgentArchiveResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Version */
+            version: number;
+        };
+        /**
+         * AgentCreateRequest
+         * @description Create payload. ``user_id`` is server-derived, never accepted.
+         */
+        AgentCreateRequest: {
+            /** Description */
+            description?: string | null;
+            /** Entrypoint */
+            entrypoint?: string | null;
+            /** Logica */
+            logica: string;
+            /** Name */
+            name: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "orchestrator" | "investigator" | "marker" | "worker" | "tutor" | "auditor";
+        };
         /** AgentDetail */
         AgentDetail: {
+            /** Created At */
+            created_at: string | null;
             /** Description */
             description: string | null;
             /** Entrypoint */
@@ -227,12 +1990,149 @@ export interface components {
             id: string;
             /** Is Active */
             is_active: boolean;
+            /** Logica */
+            logica: string;
             /** Name */
             name: string;
             /** Type */
             type: string;
+            /** Updated At */
+            updated_at: string | null;
             /** Version */
             version: number;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
+        };
+        /**
+         * AgentPatchRequest
+         * @description Partial update. All fields optional; merged onto the loaded row.
+         *
+         *     Optimistic-locking precondition: ``updated_at`` MUST match the value
+         *     the client most recently fetched. If it does not, the server returns
+         *     409 Conflict so the UI can prompt the operator to reload.
+         */
+        AgentPatchRequest: {
+            /** Description */
+            description?: string | null;
+            /** Entrypoint */
+            entrypoint?: string | null;
+            /** Logica */
+            logica?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Type */
+            type?: ("orchestrator" | "investigator" | "marker" | "worker" | "tutor" | "auditor") | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /**
+         * AgentRunDetail
+         * @description Full row with captured streams + structured resource accounting.
+         */
+        AgentRunDetail: {
+            /**
+             * Agent Id
+             * Format: uuid
+             */
+            agent_id: string;
+            /** Denial Reason */
+            denial_reason: string | null;
+            /** Duration Seconds */
+            duration_seconds?: number | null;
+            /** Ended At */
+            ended_at: string | null;
+            /** Exit Code */
+            exit_code: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Pair Id
+             * Format: uuid
+             */
+            pair_id: string;
+            /** Resource Usage */
+            resource_usage: {
+                [key: string]: unknown;
+            };
+            /** Result */
+            result?: unknown;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Status */
+            status: string;
+            /** Stderr */
+            stderr: string | null;
+            /** Stdout */
+            stdout: string | null;
+        };
+        /**
+         * AgentRunRequest
+         * @description Body of ``POST /api/agents/{id}/run``.
+         *
+         *     ``inputs`` is the free-form JSON-ish payload forwarded into
+         *     :attr:`AgentContext.inputs`. We forbid extra fields so a client
+         *     typo (``project`` vs ``project_id``) is a 422 not a silent no-op.
+         */
+        AgentRunRequest: {
+            /**
+             * Dry Run
+             * @default true
+             */
+            dry_run: boolean;
+            /** Inputs */
+            inputs?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Pair Id
+             * Format: uuid
+             */
+            pair_id: string;
+        };
+        /**
+         * AgentRunSummary
+         * @description Subset of the ``agent_runs`` row echoed back to the caller.
+         */
+        AgentRunSummary: {
+            /**
+             * Agent Id
+             * Format: uuid
+             */
+            agent_id: string;
+            /** Denial Reason */
+            denial_reason: string | null;
+            /** Duration Seconds */
+            duration_seconds?: number | null;
+            /** Ended At */
+            ended_at: string | null;
+            /** Exit Code */
+            exit_code: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Pair Id
+             * Format: uuid
+             */
+            pair_id: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Status */
+            status: string;
         };
         /** AgentSummary */
         AgentSummary: {
@@ -245,13 +2145,394 @@ export interface components {
             is_active: boolean;
             /** Name */
             name: string;
+            /**
+             * Projects Using
+             * @default 0
+             */
+            projects_using: number;
             /** Type */
             type: string;
+            /** Updated At */
+            updated_at: string | null;
+            /** Version */
+            version: number;
+        };
+        /** AttachSkillRequest */
+        AttachSkillRequest: {
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Skill Id
+             * Format: uuid
+             */
+            skill_id: string;
+        };
+        /**
+         * AttachedSkill
+         * @description Row returned by ``GET /api/agents/{id}/skills``.
+         *
+         *     Carries both the binding (id, created_at, notes) and the skill
+         *     summary so the UI doesn't need a follow-up roundtrip per row.
+         */
+        AttachedSkill: {
+            /**
+             * Binding Id
+             * Format: uuid
+             */
+            binding_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Name */
+            name: string;
+            /** Notes */
+            notes: string | null;
+            /** Runtime */
+            runtime: string;
+            /**
+             * Skill Id
+             * Format: uuid
+             */
+            skill_id: string;
+            /** Type */
+            type: string;
+            /** Version */
+            version: number;
+        };
+        /** AuditLogItem */
+        AuditLogItem: {
+            /** Action */
+            action: string;
+            /** After State */
+            after_state: {
+                [key: string]: unknown;
+            } | null;
+            /** Before State */
+            before_state: {
+                [key: string]: unknown;
+            } | null;
+            /** Created At */
+            created_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Ip Address */
+            ip_address: string | null;
+            /** Target Id */
+            target_id: string | null;
+            /** Target Type */
+            target_type: string;
+            /** User Agent */
+            user_agent: string | null;
+        };
+        /** AuditLogPage */
+        AuditLogPage: {
+            /** Items */
+            items: components["schemas"]["AuditLogItem"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** ChatConversationCreate */
+        ChatConversationCreate: {
+            /** Model Override */
+            model_override?: string | null;
+            /** Title */
+            title?: string | null;
+        };
+        /** ChatConversationList */
+        ChatConversationList: {
+            /** Items */
+            items: components["schemas"]["ChatConversationOut"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * ChatConversationOut
+         * @description Slim conversation envelope returned by all CRUD endpoints.
+         */
+        ChatConversationOut: {
+            /** Archived At */
+            archived_at?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Meta Data */
+            meta_data?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Pair Id
+             * Format: uuid
+             */
+            pair_id: string;
+            /** Title */
+            title: string;
+            /**
+             * Tokens In Total
+             * @default 0
+             */
+            tokens_in_total: number;
+            /** Updated At */
+            updated_at?: string | null;
+            /**
+             * Usd Estimated Total
+             * @default 0
+             */
+            usd_estimated_total: string;
+        };
+        /** ChatConversationPatch */
+        ChatConversationPatch: {
+            /** Archived */
+            archived?: boolean | null;
+            /** Title */
+            title?: string | null;
+        };
+        /** ChatMessageList */
+        ChatMessageList: {
+            /** Items */
+            items: components["schemas"]["ChatMessageOut"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * ChatMessageOut
+         * @description One conversation turn in the wire format.
+         */
+        ChatMessageOut: {
+            /** Content */
+            content: string;
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Model */
+            model?: string | null;
+            /** Role */
+            role: string;
+            /** Stop Reason */
+            stop_reason?: string | null;
+            /** Tokens In */
+            tokens_in?: number | null;
+            /** Tokens Out */
+            tokens_out?: number | null;
+            /** Tool Calls */
+            tool_calls?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Tool Results */
+            tool_results?: {
+                [key: string]: unknown;
+            }[] | null;
+        };
+        /** ChatMessagePost */
+        ChatMessagePost: {
+            /** Content */
+            content: string;
+        };
+        /** ConfigVersionDetail */
+        ConfigVersionDetail: {
+            /** Applied At */
+            applied_at?: string | null;
+            /** Decided At */
+            decided_at?: string | null;
+            /** Decided By */
+            decided_by?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Pair Id
+             * Format: uuid
+             */
+            pair_id: string;
+            /** Parent Version Id */
+            parent_version_id?: string | null;
+            /** Proposed At */
+            proposed_at?: string | null;
+            /** Risk Class */
+            risk_class: string;
+            /** Sleep Run Id */
+            sleep_run_id?: string | null;
+            /** Snapshot */
+            snapshot: {
+                [key: string]: unknown;
+            };
+            /** Status */
+            status: string;
+        };
+        /**
+         * ConversationDetail
+         * @description GET-by-id payload: the conversation plus the tail of its messages.
+         */
+        ConversationDetail: {
+            conversation: components["schemas"]["ChatConversationOut"];
+            /** Messages */
+            messages: components["schemas"]["ChatMessageOut"][];
+        };
+        /** DisableRequest */
+        DisableRequest: {
+            /** Current Password */
+            current_password: string;
+            /** Totp Code */
+            totp_code: string;
+        };
+        /** EmailChangeRequest */
+        EmailChangeRequest: {
+            /** Current Password */
+            current_password: string;
+            /**
+             * New Email
+             * Format: email
+             */
+            new_email: string;
+        };
+        /**
+         * EpisodicMemoryListResponse
+         * @description Paginated episode list — newest first within the (since, until) window.
+         */
+        EpisodicMemoryListResponse: {
+            /** Items */
+            items: components["schemas"]["EpisodicMemoryResponse"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * EpisodicMemoryResponse
+         * @description One (s, a, r, s') episode.
+         */
+        EpisodicMemoryResponse: {
+            /** Action */
+            action: string;
+            /** Consumed By Sleep Run Id */
+            consumed_by_sleep_run_id?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Meta Data */
+            meta_data?: {
+                [key: string]: unknown;
+            };
+            /** Next State Key */
+            next_state_key?: string | null;
+            /** Order Id */
+            order_id?: string | null;
+            /**
+             * Pair Id
+             * Format: uuid
+             */
+            pair_id: string;
+            /** Reward */
+            reward: string;
+            /** State Key */
+            state_key: string;
+        };
+        /** ExchangeCreate */
+        ExchangeCreate: {
+            /** Code */
+            code: string;
+            /**
+             * Kind
+             * @default broker
+             */
+            kind: string;
+            /** Meta Data */
+            meta_data?: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+        };
+        /** ExchangeDetail */
+        ExchangeDetail: {
+            /** Code */
+            code: string;
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Meta Data */
+            meta_data?: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** ExchangeListResponse */
+        ExchangeListResponse: {
+            /** Items */
+            items: components["schemas"]["ExchangeDetail"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** ExchangePatch */
+        ExchangePatch: {
+            /** Code */
+            code?: string | null;
+            /** Kind */
+            kind?: string | null;
+            /** Meta Data */
+            meta_data?: {
+                [key: string]: unknown;
+            } | null;
+            /** Name */
+            name?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * LoginMfaRequest
+         * @description Body of ``POST /api/auth/login/mfa``.
+         *
+         *     Exactly one of ``totp_code`` / ``recovery_code`` must be present —
+         *     the validator below rejects "both" / "neither" with HTTP 422.
+         */
+        LoginMfaRequest: {
+            /** Recovery Code */
+            recovery_code?: string | null;
+            /** Totp Code */
+            totp_code?: string | null;
         };
         /** LoginRequest */
         LoginRequest: {
@@ -263,36 +2544,607 @@ export interface components {
             /** Password */
             password: string;
         };
-        /** LoginResponse */
+        /**
+         * LoginResponse
+         * @description Result of ``POST /api/auth/login``.
+         *
+         *     Two shapes share this model:
+         *
+         *     * Single-factor success — ``user`` is populated, ``requires_mfa`` is
+         *       ``False`` (default). Cookies (access + refresh + csrf) have been
+         *       set on the response.
+         *     * Two-factor handoff — ``user`` is ``None``, ``requires_mfa`` is
+         *       ``True``. The ``aether_mfa_pending`` cookie is the only material
+         *       set on the response; the caller MUST POST the second step to
+         *       ``/api/auth/login/mfa`` to obtain the real session cookies.
+         */
         LoginResponse: {
-            user: components["schemas"]["UserSummary"];
-        };
-        /** ProjectDetail */
-        ProjectDetail: {
-            /** Container Name */
-            container_name: string | null;
-            /** Description */
-            description: string | null;
             /**
-             * Id
-             * Format: uuid
+             * Requires Mfa
+             * @default false
              */
-            id: string;
+            requires_mfa: boolean;
+            user?: components["schemas"]["UserSummary"] | null;
+        };
+        /**
+         * Mql5ToPythonRequest
+         * @description Body of ``POST /api/tools/mql5-to-python``.
+         *
+         *     ``target_entrypoint`` mirrors ``agents.entrypoint``; the translator
+         *     bakes the requested name into the generated Python so the operator
+         *     can paste straight into the agent without renaming. Defaults to
+         *     ``on_tick`` (Worker convention).
+         */
+        Mql5ToPythonRequest: {
+            /** Mql5 */
+            mql5: string;
+            /**
+             * Target Entrypoint
+             * @default on_tick
+             */
+            target_entrypoint: string;
+        };
+        /**
+         * Mql5ToPythonResponse
+         * @description Successful translation envelope.
+         *
+         *     ``python`` is the Python source the editor displays in the right
+         *     pane of the modal. Token accounting fields are exposed so the UI
+         *     can show the operator how expensive the translation was (and so
+         *     the audit log size accounting has the same numbers).
+         */
+        Mql5ToPythonResponse: {
+            /** Input Tokens */
+            input_tokens: number;
+            /** Model */
+            model: string;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Python */
+            python: string;
+        };
+        /** NestedPairCreate */
+        NestedPairCreate: {
+            /** Account Id */
+            account_id?: string | null;
+            /** Auditor Agent Id */
+            auditor_agent_id?: string | null;
+            /** Auditor Params */
+            auditor_params?: {
+                [key: string]: unknown;
+            };
+            /** Base Logic */
+            base_logic?: string | null;
+            /** Capital Asignado */
+            capital_asignado?: number | string | null;
+            /** Commission Currency */
+            commission_currency?: string | null;
+            /** Commission Per Lot */
+            commission_per_lot?: number | string | null;
+            /** Description */
+            description?: string | null;
+            /** Docker Image */
+            docker_image?: string | null;
+            /** Investigator Agent Id */
+            investigator_agent_id?: string | null;
+            /** Investigator Params */
+            investigator_params?: {
+                [key: string]: unknown;
+            };
+            /** Marker Agent Id */
+            marker_agent_id?: string | null;
+            /** Marker Params */
+            marker_params?: {
+                [key: string]: unknown;
+            };
+            /** Max Daily Dd */
+            max_daily_dd?: number | string | null;
+            /** Max Exposure */
+            max_exposure?: number | string | null;
+            /** Max Total Dd */
+            max_total_dd?: number | string | null;
             /** Mcp Port */
-            mcp_port: number | null;
+            mcp_port?: number | null;
             /** Mcp Url */
             mcp_url: string;
             /** Name */
             name: string;
-            /** Status */
-            status: string;
+            /** Notes */
+            notes?: string | null;
+            /** Orchestrator Agent Id */
+            orchestrator_agent_id?: string | null;
+            /** Orchestrator Params */
+            orchestrator_params?: {
+                [key: string]: unknown;
+            };
+            /** Risk Per Trade */
+            risk_per_trade?: number | string | null;
+            /** Spread Typical */
+            spread_typical?: number | string | null;
+            /** Strategy Description */
+            strategy_description?: string | null;
+            /** Swap Long */
+            swap_long?: number | string | null;
+            /** Swap Short */
+            swap_short?: number | string | null;
             /** Symbol */
             symbol: string;
+            /** Tags */
+            tags?: string[] | null;
             /** Timeframe */
             timeframe: string;
+            /** Trading Sessions */
+            trading_sessions?: string[];
+            /** Tutor Agent Id */
+            tutor_agent_id?: string | null;
+            /** Tutor Params */
+            tutor_params?: {
+                [key: string]: unknown;
+            };
+            /** Worker Agent Id */
+            worker_agent_id?: string | null;
+            /** Worker Params */
+            worker_params?: {
+                [key: string]: unknown;
+            };
         };
-        /** ProjectSummary */
-        ProjectSummary: {
+        /**
+         * OperativaMetrics
+         * @description Wire shape for the metrics block of the Operativa orders endpoint.
+         *
+         *     ``profit_factor`` is ``float | str`` — the literal string
+         *     ``"Infinity"`` is emitted when there are wins but zero losses
+         *     (Python ``math.inf`` would fail strict JSON encoders). ``avg_rr``
+         *     is ``None`` when no trade has a valid R denominator.
+         */
+        OperativaMetrics: {
+            /** Avg Rr */
+            avg_rr: number | null;
+            /** Profit Factor */
+            profit_factor: number | string;
+            /** Total Pnl */
+            total_pnl: string;
+            /** Trades Total */
+            trades_total: number;
+            /** Win Rate */
+            win_rate: number;
+        };
+        /**
+         * OperativaOrderRecord
+         * @description Extended order row for the Operativa surface.
+         *
+         *     Adds the eight Operativa columns (open/close timing + pricing + cost
+         *     breakdown + meta_data) that the base ``OrderRecord`` deliberately
+         *     omits. Pydantic serialises ``Decimal`` as string (model default) so
+         *     no precision is lost on the wire.
+         */
+        OperativaOrderRecord: {
+            /** Agent Id */
+            agent_id?: string | null;
+            /** Close Price */
+            close_price?: string | null;
+            /** Close Time */
+            close_time?: string | null;
+            /** Comment */
+            comment?: string | null;
+            /** Commission */
+            commission?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Filled At */
+            filled_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Magic */
+            magic?: number | null;
+            /** Meta Data */
+            meta_data?: {
+                [key: string]: unknown;
+            };
+            /** Mt5 Ticket */
+            mt5_ticket?: number | null;
+            /** Open Price */
+            open_price?: string | null;
+            /** Open Time */
+            open_time?: string | null;
+            /**
+             * Pair Id
+             * Format: uuid
+             */
+            pair_id: string;
+            /** Profit Gross */
+            profit_gross?: string | null;
+            /** Profit Net */
+            profit_net?: string | null;
+            /** Side */
+            side: string;
+            /** Sl */
+            sl: string;
+            /** Status */
+            status: string;
+            /** Swap */
+            swap?: string | null;
+            /** Symbol */
+            symbol: string;
+            /** Tp */
+            tp?: string | null;
+            /** Volume */
+            volume: string;
+        };
+        /**
+         * OperativaOrdersResponse
+         * @description Wire shape for ``GET /operativa/orders`` — paged list + metrics.
+         */
+        OperativaOrdersResponse: {
+            /** Items */
+            items: components["schemas"]["OperativaOrderRecord"][];
+            metrics: components["schemas"]["OperativaMetrics"];
+            /** Total */
+            total: number;
+        };
+        /**
+         * OrderCreate
+         * @description POST /orders body.
+         *
+         *     The body forwards directly to the MCP ``mt5_place_order`` tool after
+         *     risk + approval clearance. SL is REQUIRED and positive — schema-level
+         *     enforcement here, RiskEnforcer-level enforcement at the gate,
+         *     wrapper-level enforcement at the MCP server. Three layers.
+         */
+        OrderCreate: {
+            /** Agent Id */
+            agent_id?: string | null;
+            /** Comment */
+            comment?: string | null;
+            /**
+             * Deviation
+             * @default 20
+             */
+            deviation: number;
+            /**
+             * Magic
+             * @default 0
+             */
+            magic: number;
+            /** Price */
+            price?: number | string | null;
+            /** Risk Money Override */
+            risk_money_override?: number | string | null;
+            /** Side */
+            side: string;
+            /** Sl */
+            sl: number | string;
+            /** Symbol */
+            symbol: string;
+            /** Tp */
+            tp?: number | string | null;
+            /**
+             * Type
+             * @default market
+             */
+            type: string;
+            /** Volume */
+            volume: number | string;
+        };
+        /**
+         * PairCreate
+         * @description POST body. Defaults from CHARTER are applied by the model defaults.
+         */
+        PairCreate: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Auditor Agent Id */
+            auditor_agent_id?: string | null;
+            /** Auditor Params */
+            auditor_params?: {
+                [key: string]: unknown;
+            };
+            /** Base Logic */
+            base_logic?: string | null;
+            /** Capital Asignado */
+            capital_asignado?: number | string | null;
+            /** Commission Currency */
+            commission_currency?: string | null;
+            /** Commission Per Lot */
+            commission_per_lot?: number | string | null;
+            /** Description */
+            description?: string | null;
+            /** Docker Image */
+            docker_image?: string | null;
+            /** Investigator Agent Id */
+            investigator_agent_id?: string | null;
+            /** Investigator Params */
+            investigator_params?: {
+                [key: string]: unknown;
+            };
+            /** Marker Agent Id */
+            marker_agent_id?: string | null;
+            /** Marker Params */
+            marker_params?: {
+                [key: string]: unknown;
+            };
+            /** Max Daily Dd */
+            max_daily_dd?: number | string | null;
+            /** Max Exposure */
+            max_exposure?: number | string | null;
+            /** Max Total Dd */
+            max_total_dd?: number | string | null;
+            /** Mcp Port */
+            mcp_port?: number | null;
+            /** Mcp Url */
+            mcp_url: string;
+            /** Name */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+            /** Orchestrator Agent Id */
+            orchestrator_agent_id?: string | null;
+            /** Orchestrator Params */
+            orchestrator_params?: {
+                [key: string]: unknown;
+            };
+            /** Risk Per Trade */
+            risk_per_trade?: number | string | null;
+            /** Spread Typical */
+            spread_typical?: number | string | null;
+            /** Strategy Description */
+            strategy_description?: string | null;
+            /** Swap Long */
+            swap_long?: number | string | null;
+            /** Swap Short */
+            swap_short?: number | string | null;
+            /** Symbol */
+            symbol: string;
+            /** Tags */
+            tags?: string[] | null;
+            /** Timeframe */
+            timeframe: string;
+            /** Trading Sessions */
+            trading_sessions?: string[];
+            /** Tutor Agent Id */
+            tutor_agent_id?: string | null;
+            /** Tutor Params */
+            tutor_params?: {
+                [key: string]: unknown;
+            };
+            /** Worker Agent Id */
+            worker_agent_id?: string | null;
+            /** Worker Params */
+            worker_params?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * PairDetail
+         * @description Full representation returned by GET-by-id and after mutations.
+         */
+        PairDetail: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Auditor Agent Id */
+            auditor_agent_id?: string | null;
+            /** Auditor Params */
+            auditor_params?: {
+                [key: string]: unknown;
+            };
+            /** Base Logic */
+            base_logic?: string | null;
+            /** Capital Asignado */
+            capital_asignado?: string | null;
+            /** Commission Currency */
+            commission_currency?: string | null;
+            /** Commission Per Lot */
+            commission_per_lot?: string | null;
+            /** Container Id */
+            container_id?: string | null;
+            /** Container Name */
+            container_name?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Docker Image */
+            docker_image?: string | null;
+            /** Error Count */
+            error_count?: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Investigator Agent Id */
+            investigator_agent_id?: string | null;
+            /** Investigator Params */
+            investigator_params?: {
+                [key: string]: unknown;
+            };
+            /** Last Active At */
+            last_active_at?: string | null;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Sleep At */
+            last_sleep_at?: string | null;
+            /** Marker Agent Id */
+            marker_agent_id?: string | null;
+            /** Marker Params */
+            marker_params?: {
+                [key: string]: unknown;
+            };
+            /** Max Daily Dd */
+            max_daily_dd?: string | null;
+            /** Max Exposure */
+            max_exposure?: string | null;
+            /** Max Total Dd */
+            max_total_dd?: string | null;
+            /** Mcp Port */
+            mcp_port?: number | null;
+            /** Mcp Url */
+            mcp_url: string;
+            /** Name */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+            /** Orchestrator Agent Id */
+            orchestrator_agent_id?: string | null;
+            /** Orchestrator Params */
+            orchestrator_params?: {
+                [key: string]: unknown;
+            };
+            /** Risk Per Trade */
+            risk_per_trade?: string | null;
+            /** Spread Typical */
+            spread_typical?: string | null;
+            /** Status */
+            status: string;
+            /** Stopped At */
+            stopped_at?: string | null;
+            /** Strategy Description */
+            strategy_description?: string | null;
+            /** Strategy Version */
+            strategy_version?: number | null;
+            /** Swap Long */
+            swap_long?: string | null;
+            /** Swap Short */
+            swap_short?: string | null;
+            /** Symbol */
+            symbol: string;
+            /** Tags */
+            tags?: string[] | null;
+            /** Timeframe */
+            timeframe: string;
+            /** Trading Sessions */
+            trading_sessions?: string[];
+            /** Tutor Agent Id */
+            tutor_agent_id?: string | null;
+            /** Tutor Params */
+            tutor_params?: {
+                [key: string]: unknown;
+            };
+            /** Updated At */
+            updated_at?: string | null;
+            /** Worker Agent Id */
+            worker_agent_id?: string | null;
+            /** Worker Params */
+            worker_params?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * PairListResponse
+         * @description Paginated list payload — mirror of the X-Total-Count header in the body.
+         */
+        PairListResponse: {
+            /** Items */
+            items: components["schemas"]["PairSummary"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * PairPatch
+         * @description PATCH body — explicit allowlist of editable fields. ``status`` rejected.
+         */
+        PairPatch: {
+            /** Auditor Agent Id */
+            auditor_agent_id?: string | null;
+            /** Auditor Params */
+            auditor_params?: {
+                [key: string]: unknown;
+            } | null;
+            /** Base Logic */
+            base_logic?: string | null;
+            /** Capital Asignado */
+            capital_asignado?: number | string | null;
+            /** Commission Currency */
+            commission_currency?: string | null;
+            /** Commission Per Lot */
+            commission_per_lot?: number | string | null;
+            /** Description */
+            description?: string | null;
+            /** Docker Image */
+            docker_image?: string | null;
+            /** Investigator Agent Id */
+            investigator_agent_id?: string | null;
+            /** Investigator Params */
+            investigator_params?: {
+                [key: string]: unknown;
+            } | null;
+            /** Marker Agent Id */
+            marker_agent_id?: string | null;
+            /** Marker Params */
+            marker_params?: {
+                [key: string]: unknown;
+            } | null;
+            /** Max Daily Dd */
+            max_daily_dd?: number | string | null;
+            /** Max Exposure */
+            max_exposure?: number | string | null;
+            /** Max Total Dd */
+            max_total_dd?: number | string | null;
+            /** Mcp Port */
+            mcp_port?: number | null;
+            /** Mcp Url */
+            mcp_url?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Orchestrator Agent Id */
+            orchestrator_agent_id?: string | null;
+            /** Orchestrator Params */
+            orchestrator_params?: {
+                [key: string]: unknown;
+            } | null;
+            /** Risk Per Trade */
+            risk_per_trade?: number | string | null;
+            /** Spread Typical */
+            spread_typical?: number | string | null;
+            /** Strategy Description */
+            strategy_description?: string | null;
+            /** Swap Long */
+            swap_long?: number | string | null;
+            /** Swap Short */
+            swap_short?: number | string | null;
+            /** Symbol */
+            symbol?: string | null;
+            /** Tags */
+            tags?: string[] | null;
+            /** Timeframe */
+            timeframe?: string | null;
+            /** Trading Sessions */
+            trading_sessions?: string[] | null;
+            /** Tutor Agent Id */
+            tutor_agent_id?: string | null;
+            /** Tutor Params */
+            tutor_params?: {
+                [key: string]: unknown;
+            } | null;
+            /** Worker Agent Id */
+            worker_agent_id?: string | null;
+            /** Worker Params */
+            worker_params?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * PairSummary
+         * @description Slim representation for list endpoints.
+         */
+        PairSummary: {
+            /** Created At */
+            created_at?: string | null;
             /**
              * Id
              * Format: uuid
@@ -306,6 +3158,259 @@ export interface components {
             symbol: string;
             /** Timeframe */
             timeframe: string;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** PasswordChangeRequest */
+        PasswordChangeRequest: {
+            /** Current Password */
+            current_password: string;
+            /** New Password */
+            new_password: string;
+            /**
+             * Sign Out Others
+             * @default false
+             */
+            sign_out_others: boolean;
+        };
+        /**
+         * ProfileResponse
+         * @description Shape returned by ``PATCH /api/me`` and the various session-derived helpers.
+         */
+        ProfileResponse: {
+            /** Avatar Url */
+            avatar_url: string | null;
+            /** Created At */
+            created_at: string | null;
+            /** Display Name */
+            display_name: string | null;
+            /** Email */
+            email: string;
+            /** Email Verified At */
+            email_verified_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Admin */
+            is_admin: boolean;
+        };
+        /**
+         * ProfileUpdateRequest
+         * @description Partial profile update.
+         *
+         *     Pydantic v2 ``model_config = {"extra": "forbid"}`` rejects unknown
+         *     fields with HTTP 422 — that's the spec contract.
+         */
+        ProfileUpdateRequest: {
+            /** Avatar Url */
+            avatar_url?: string | null;
+            /** Display Name */
+            display_name?: string | null;
+        };
+        /**
+         * QTableListItem
+         * @description Slim Q-Table entry for list responses — omits the heavy ``table_data``.
+         */
+        QTableListItem: {
+            /** Alpha Normal */
+            alpha_normal: string;
+            /** Alpha Special */
+            alpha_special: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Created By Sleep Run Id */
+            created_by_sleep_run_id?: string | null;
+            /** Episode Count */
+            episode_count: number;
+            /** Gamma */
+            gamma: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Pair Id
+             * Format: uuid
+             */
+            pair_id: string;
+            /** Version */
+            version: number;
+        };
+        /**
+         * QTableListResponse
+         * @description Paginated Q-Table list — newest version first.
+         */
+        QTableListResponse: {
+            /** Items */
+            items: components["schemas"]["QTableListItem"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * QTableResponse
+         * @description Full Q-Table version, including the ``table_data`` JSONB.
+         */
+        QTableResponse: {
+            /** Alpha Normal */
+            alpha_normal: string;
+            /** Alpha Special */
+            alpha_special: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Created By Sleep Run Id */
+            created_by_sleep_run_id?: string | null;
+            /** Episode Count */
+            episode_count: number;
+            /** Gamma */
+            gamma: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Pair Id
+             * Format: uuid
+             */
+            pair_id: string;
+            /** Table Data */
+            table_data?: {
+                [key: string]: unknown;
+            };
+            /** Version */
+            version: number;
+        };
+        /** RegenerateRequest */
+        RegenerateRequest: {
+            /** Current Password */
+            current_password: string;
+        };
+        /** RegenerateResponse */
+        RegenerateResponse: {
+            /** Recovery Codes */
+            recovery_codes: string[];
+        };
+        /** RevokeOthersResponse */
+        RevokeOthersResponse: {
+            /** Revoked */
+            revoked: number;
+        };
+        /**
+         * SemanticMemoryListResponse
+         * @description Active rule list — ordered newest-first.
+         */
+        SemanticMemoryListResponse: {
+            /** Items */
+            items: components["schemas"]["SemanticMemoryResponse"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * SemanticMemoryResponse
+         * @description One semantic rule (active by default).
+         */
+        SemanticMemoryResponse: {
+            /** Active */
+            active: boolean;
+            /** Body */
+            body: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Created By Sleep Run Id */
+            created_by_sleep_run_id?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Pair Id
+             * Format: uuid
+             */
+            pair_id: string;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+            /** Rule Type */
+            rule_type: string;
+            /** Superseded By */
+            superseded_by?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** SessionItem */
+        SessionItem: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Ip Address */
+            ip_address: string | null;
+            /** Is Current */
+            is_current: boolean;
+            /**
+             * Issued At
+             * Format: date-time
+             */
+            issued_at: string;
+            /**
+             * Last Used At
+             * Format: date-time
+             */
+            last_used_at: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** User Agent */
+            user_agent: string | null;
+        };
+        /** SessionsPage */
+        SessionsPage: {
+            /** Items */
+            items: components["schemas"]["SessionItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /**
+         * SetupResponse
+         * @description Returned exactly once at the end of POST /api/me/mfa/setup.
+         *
+         *     The frontend MUST display ``qr_data_url`` (rendered via
+         *     ``qrcode.react`` or similar) AND ``secret_b32`` (manual-entry
+         *     fallback) — once the dialog closes, the secret is unreadable.
+         *     ``mfa_enabled`` stays ``false`` until POST /verify succeeds.
+         */
+        SetupResponse: {
+            /** Provisioning Uri */
+            provisioning_uri: string;
+            /** Qr Data Url */
+            qr_data_url: string;
+            /** Secret B32 */
+            secret_b32: string;
+        };
+        /**
+         * SignatureField
+         * @description One named slot in the skill input/output signature.
+         *
+         *     The v1 ``type`` is a free-form string — there is no validation of
+         *     whether ``"int"`` is a real Python type, etc. The sandbox change is
+         *     where the type system gets locked down; for now we just round-trip
+         *     the string so the UI can display it.
+         */
+        SignatureField: {
+            /** Name */
+            name: string;
+            /** Type */
+            type: string;
         };
         /** SignupRequest */
         SignupRequest: {
@@ -318,6 +3423,263 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /** SkillArchiveResponse */
+        SkillArchiveResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Version */
+            version: number;
+        };
+        /**
+         * SkillCreateRequest
+         * @description Create payload. ``user_id`` is server-derived, never accepted.
+         *
+         *     ``runtime`` defaults to ``'markdown'`` per the charter correction —
+         *     skills are knowledge artifacts by default; Python is reserved for
+         *     computational/algorithmic capabilities.
+         */
+        SkillCreateRequest: {
+            /** Code */
+            code: string;
+            /** Description */
+            description?: string | null;
+            input_signature?: components["schemas"]["SkillSignature"];
+            /** Name */
+            name: string;
+            output_signature?: components["schemas"]["SkillSignature"];
+            /**
+             * Runtime
+             * @default markdown
+             * @enum {string}
+             */
+            runtime: "markdown" | "python";
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "indicator" | "data_source" | "analytic" | "executor" | "risk";
+        };
+        /** SkillDetail */
+        SkillDetail: {
+            /** Code */
+            code: string;
+            /** Created At */
+            created_at: string | null;
+            /** Description */
+            description: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Input Signature */
+            input_signature: {
+                [key: string]: unknown;
+            };
+            /** Is Active */
+            is_active: boolean;
+            /** Name */
+            name: string;
+            /** Output Signature */
+            output_signature: {
+                [key: string]: unknown;
+            };
+            /** Runtime */
+            runtime: string;
+            /** Type */
+            type: string;
+            /** Updated At */
+            updated_at: string | null;
+            /**
+             * Used By Agent Count
+             * @default 0
+             */
+            used_by_agent_count: number;
+            /** Version */
+            version: number;
+        };
+        /**
+         * SkillPatchRequest
+         * @description Partial update. All fields optional; merged onto the loaded row.
+         *
+         *     Optimistic-locking precondition: ``updated_at`` MUST match the value
+         *     the client most recently fetched. If it does not, the server returns
+         *     409 Conflict so the UI can prompt the operator to reload.
+         */
+        SkillPatchRequest: {
+            /** Code */
+            code?: string | null;
+            /** Description */
+            description?: string | null;
+            input_signature?: components["schemas"]["SkillSignature"] | null;
+            /** Name */
+            name?: string | null;
+            output_signature?: components["schemas"]["SkillSignature"] | null;
+            /** Runtime */
+            runtime?: ("markdown" | "python") | null;
+            /** Type */
+            type?: ("indicator" | "data_source" | "analytic" | "executor" | "risk") | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /**
+         * SkillSignature
+         * @description Slim TypedDict-like signature persisted as JSONB.
+         *
+         *     Note this is NOT a JSON Schema — see ``sdd/skills-catalog/spec``.
+         */
+        SkillSignature: {
+            /** Inputs */
+            inputs?: components["schemas"]["SignatureField"][];
+            /** Outputs */
+            outputs?: components["schemas"]["SignatureField"][];
+        };
+        /** SkillSummary */
+        SkillSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Name */
+            name: string;
+            /** Runtime */
+            runtime: string;
+            /** Type */
+            type: string;
+            /** Updated At */
+            updated_at: string | null;
+            /**
+             * Used By Agent Count
+             * @default 0
+             */
+            used_by_agent_count: number;
+            /** Version */
+            version: number;
+        };
+        /** SleepReflectionDetail */
+        SleepReflectionDetail: {
+            /** Agent Type */
+            agent_type: string;
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Reflection Md */
+            reflection_md?: string | null;
+            /** Suggested Changes */
+            suggested_changes?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * SleepReportResponse
+         * @description Outcome digest of one sleep run (1:1 with ``sleep_runs``).
+         *
+         *     Returned by ``GET /api/pairs/{id}/sleep-runs/{run_id}/report`` —
+         *     added by the sleep-learning-loop change. ``payload`` aggregates the
+         *     structured outcome (Q-Table diff, ingested episodes, semantic rule
+         *     diffs, optional promoted ``config_versions.id``); ``summary_md`` is
+         *     the operator-friendly markdown digest.
+         */
+        SleepReportResponse: {
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Sleep Run Id
+             * Format: uuid
+             */
+            sleep_run_id: string;
+            /** Summary Md */
+            summary_md?: string | null;
+        };
+        /** SleepRunDetailResponse */
+        SleepRunDetailResponse: {
+            /** Config Versions */
+            config_versions: components["schemas"]["ConfigVersionDetail"][];
+            /** Reflections */
+            reflections: components["schemas"]["SleepReflectionDetail"][];
+            run: components["schemas"]["SleepRunSummary"];
+        };
+        /** SleepRunListResponse */
+        SleepRunListResponse: {
+            /** Items */
+            items: components["schemas"]["SleepRunSummary"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** SleepRunSummary */
+        SleepRunSummary: {
+            /** Ended At */
+            ended_at?: string | null;
+            /** Error */
+            error?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Pair Id
+             * Format: uuid
+             */
+            pair_id: string;
+            /** Phase Type */
+            phase_type: string;
+            /** Started At */
+            started_at?: string | null;
+            /** Status */
+            status: string;
+            /** Summary */
+            summary?: string | null;
+        };
+        /** TriggerSleepBody */
+        TriggerSleepBody: {
+            /**
+             * Phase Type
+             * @description One of: micro | profundo | critico
+             */
+            phase_type: string;
+        };
+        /** TriggerSleepResponse */
+        TriggerSleepResponse: {
+            /** Config Version Id */
+            config_version_id?: string | null;
+            /** Error */
+            error?: string | null;
+            /**
+             * Sleep Run Id
+             * Format: uuid
+             */
+            sleep_run_id: string;
+            /** Status */
+            status: string;
+            /** Summary */
+            summary?: string | null;
         };
         /** UserMe */
         UserMe: {
@@ -334,6 +3696,8 @@ export interface components {
             id: string;
             /** Is Admin */
             is_admin: boolean;
+            /** Mfa Enabled */
+            mfa_enabled: boolean;
         };
         /**
          * UserSummary
@@ -365,6 +3729,26 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** VerifyRequest */
+        VerifyRequest: {
+            /** Totp Code */
+            totp_code: string;
+        };
+        /**
+         * VerifyResponse
+         * @description Returned exactly once at the end of POST /api/me/mfa/verify.
+         *
+         *     ``recovery_codes`` is the ONLY moment the plaintext codes are
+         *     visible to the user; downstream calls only ever see the argon2id
+         *     hashes. The frontend must force the user through an "I've saved
+         *     them" gate before allowing the dialog to close.
+         */
+        VerifyResponse: {
+            /** Mfa Enabled */
+            mfa_enabled: boolean;
+            /** Recovery Codes */
+            recovery_codes: string[];
+        };
     };
     responses: never;
     parameters: never;
@@ -374,10 +3758,262 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    jwks__well_known_jwks_json_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    list_accounts_api_accounts_get: {
+        parameters: {
+            query?: {
+                exchange_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_account_api_accounts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_account_api_accounts__account_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_account_api_accounts__account_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_account_api_accounts__account_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_account_pairs_api_accounts__account_id__pairs_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_account_pair_api_accounts__account_id__pairs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NestedPairCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_agents_api_agents_get: {
         parameters: {
             query?: {
                 type?: string | null;
+                is_active?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -392,6 +4028,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_agent_api_agents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentDetail"];
                 };
             };
             /** @description Validation Error */
@@ -436,6 +4105,265 @@ export interface operations {
             };
         };
     };
+    delete_agent_api_agents__agent_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_agent_api_agents__agent_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_agent_api_agents__agent_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentArchiveResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_agent_api_agents__agent_id__run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRunDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_agent_runs_api_agents__agent_id__runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRunSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_agent_skills_api_agents__agent_id__skills_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachedSkill"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    attach_skill_to_agent_api_agents__agent_id__skills_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttachSkillRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachedSkill"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    detach_skill_from_agent_api_agents__agent_id__skills__skill_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+                skill_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     login_api_auth_login_post: {
         parameters: {
             query?: never;
@@ -446,6 +4374,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    login_mfa_api_auth_login_mfa_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginMfaRequest"];
             };
         };
         responses: {
@@ -562,13 +4523,13 @@ export interface operations {
             };
         };
     };
-    list_projects_api_projects_get: {
+    approve_config_version_api_config_versions__version_id__approve_post: {
         parameters: {
-            query?: {
-                status?: string | null;
-            };
+            query?: never;
             header?: never;
-            path?: never;
+            path: {
+                version_id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -579,7 +4540,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProjectSummary"][];
+                    "application/json": components["schemas"]["ConfigVersionDetail"];
                 };
             };
             /** @description Validation Error */
@@ -593,12 +4554,12 @@ export interface operations {
             };
         };
     };
-    get_project_api_projects__project_id__get: {
+    reject_config_version_api_config_versions__version_id__reject_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                project_id: string;
+                version_id: string;
             };
             cookie?: never;
         };
@@ -610,7 +4571,2297 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProjectDetail"];
+                    "application/json": components["schemas"]["ConfigVersionDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revert_config_version_api_config_versions__version_id__revert_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigVersionDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_exchanges_api_exchanges_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExchangeListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_exchange_api_exchanges_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExchangeCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExchangeDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_exchange_api_exchanges__exchange_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exchange_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExchangeDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_exchange_api_exchanges__exchange_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exchange_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_exchange_api_exchanges__exchange_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exchange_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExchangePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExchangeDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    api_health_api_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    update_profile_api_me_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_audit_log_api_me_audit_log_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditLogPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    change_email_api_me_email_change_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disable_mfa_api_me_mfa_disable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisableRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    regenerate_recovery_codes_api_me_mfa_recovery_codes_regenerate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegenerateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegenerateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    setup_mfa_api_me_mfa_setup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupResponse"];
+                };
+            };
+        };
+    };
+    verify_mfa_setup_api_me_mfa_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerifyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    change_password_api_me_password_change_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_sessions_api_me_sessions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionsPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_other_sessions_api_me_sessions_revoke_others_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevokeOthersResponse"];
+                };
+            };
+        };
+    };
+    revoke_session_api_me_sessions__session_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_pairs_api_pairs_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_pair_api_pairs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PairCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pair_api_pairs__pair_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_pair_api_pairs__pair_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_pair_api_pairs__pair_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PairPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_project_account_api_pairs__pair_id__account_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_pair_api_pairs__pair_id__activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_project_approvals_api_pairs__pair_id__approvals_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_project_approval_api_pairs__pair_id__approvals__approval_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+                approval_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_project_approval_api_pairs__pair_id__approvals__approval_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+                approval_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    build_pair_image_api_pairs__pair_id__build_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_project_candles_api_pairs__pair_id__candles_get: {
+        parameters: {
+            query: {
+                symbol: string;
+                timeframe: string;
+                count?: number;
+            };
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_conversations_api_pairs__pair_id__chat_conversations_get: {
+        parameters: {
+            query?: {
+                archived?: boolean;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatConversationList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_conversation_api_pairs__pair_id__chat_conversations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatConversationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatConversationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_conversation_api_pairs__pair_id__chat_conversations__conversation_id__get: {
+        parameters: {
+            query?: {
+                last?: number;
+            };
+            header?: never;
+            path: {
+                pair_id: string;
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_conversation_api_pairs__pair_id__chat_conversations__conversation_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatConversationPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatConversationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_messages_api_pairs__pair_id__chat_conversations__conversation_id__messages_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                pair_id: string;
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatMessageList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_message_api_pairs__pair_id__chat_conversations__conversation_id__messages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatMessagePost"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_pair_container_api_pairs__pair_id__container_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_pair_container_api_pairs__pair_id__container_create_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_pair_container_events_api_pairs__pair_id__container_events_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pair_container_logs_api_pairs__pair_id__container_logs_get: {
+        parameters: {
+            query?: {
+                tail?: number;
+            };
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pause_pair_container_api_pairs__pair_id__container_pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recreate_pair_container_api_pairs__pair_id__container_recreate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_pair_container_api_pairs__pair_id__container_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_pair_container_api_pairs__pair_id__container_stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_dockerfile_api_pairs__pair_id__dockerfile_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_episodic_memory_api_pairs__pair_id__episodic_memory_get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+                until?: string | null;
+                state_key?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EpisodicMemoryListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_project_history_api_pairs__pair_id__history_get: {
+        parameters: {
+            query: {
+                date_from: string;
+                date_to: string;
+                symbol?: string | null;
+            };
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    maintenance_pair_api_pairs__pair_id__maintenance_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_error_pair_api_pairs__pair_id__mark_error_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_operativa_account_summary_api_pairs__pair_id__operativa_account_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountSummaryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_operativa_orders_api_pairs__pair_id__operativa_orders_get: {
+        parameters: {
+            query?: {
+                /** @description ISO datetime lower bound (default: now - 30d). */
+                from?: string | null;
+                /** @description ISO datetime upper bound (default: now). */
+                to?: string | null;
+                symbol?: string | null;
+                side?: ("buy" | "sell") | null;
+                result?: ("win" | "loss") | null;
+                magic?: number | null;
+                status?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperativaOrdersResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_project_orders_api_pairs__pair_id__orders_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    place_project_order_api_pairs__pair_id__orders_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrderCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pause_pair_api_pairs__pair_id__pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_project_positions_api_pairs__pair_id__positions_get: {
+        parameters: {
+            query?: {
+                symbol?: string | null;
+            };
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_q_tables_api_pairs__pair_id__q_tables_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QTableListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_q_table_version_api_pairs__pair_id__q_tables__version__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+                version: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QTableResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_semantic_memory_api_pairs__pair_id__semantic_memory_get: {
+        parameters: {
+            query?: {
+                rule_type?: string | null;
+                active?: boolean;
+            };
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SemanticMemoryListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_sleep_report_api_pairs__pair_id__sleep_runs__run_id__report_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SleepReportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_sleep_runs_api_pairs__pair_id__sleep_runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SleepRunListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_sleep_run_api_pairs__pair_id__sleep_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SleepRunDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trigger_sleep_run_api_pairs__pair_id__sleep_trigger_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TriggerSleepBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TriggerSleepResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_pair_api_pairs__pair_id__stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_skills_api_skills_get: {
+        parameters: {
+            query?: {
+                type?: string | null;
+                is_active?: boolean | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_skill_api_skills_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SkillCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_skill_api_skills__skill_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                skill_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_skill_api_skills__skill_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                skill_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_skill_api_skills__skill_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                skill_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SkillPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_skill_api_skills__skill_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                skill_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillArchiveResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mql5_to_python_api_tools_mql5_to_python_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Mql5ToPythonRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Mql5ToPythonResponse"];
                 };
             };
             /** @description Validation Error */

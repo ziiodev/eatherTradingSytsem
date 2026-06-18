@@ -47,7 +47,7 @@ async def _login_b(client, email: str, pw: str):
 async def test_list_projects_does_not_leak_other_tenant(app_client):
     _ua, _pa, _aa, b_email, b_pw = await _seed_two_tenants(app_client)
     await _login_b(app_client, b_email, b_pw)
-    resp = await app_client.get("/api/projects")
+    resp = await app_client.get("/api/pairs")
     assert resp.status_code == 200, resp.text
     # projects-crud changed list shape from `[]` to a paginated envelope
     # `{items, total, limit, offset}`. Assert the cross-tenant invariant on the
@@ -60,7 +60,7 @@ async def test_list_projects_does_not_leak_other_tenant(app_client):
 async def test_get_other_tenant_project_returns_404(app_client):
     _ua, project_a, _aa, b_email, b_pw = await _seed_two_tenants(app_client)
     await _login_b(app_client, b_email, b_pw)
-    resp = await app_client.get(f"/api/projects/{project_a}")
+    resp = await app_client.get(f"/api/pairs/{project_a}")
     # MUST be 404, not 403 — existence is NOT disclosed.
     assert resp.status_code == 404
 

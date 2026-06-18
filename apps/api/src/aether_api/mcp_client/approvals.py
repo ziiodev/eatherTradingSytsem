@@ -62,7 +62,7 @@ class ApprovalGate:
         """Insert a new pending approval row and return it."""
         now = datetime.now(tz=UTC).replace(tzinfo=None)
         row = OrderApproval(
-            project_id=project_id,
+            pair_id=project_id,
             user_id=user_id,
             agent_id=agent_id,
             payload=payload,
@@ -127,7 +127,7 @@ async def list_pending_approvals(
     """Return all ``pending`` rows for the project (newest first)."""
     stmt = (
         select(OrderApproval)
-        .where(OrderApproval.project_id == project_id)
+        .where(OrderApproval.pair_id == project_id)
         .where(OrderApproval.status == "pending")
         .order_by(OrderApproval.requested_at.desc())
     )
@@ -152,7 +152,7 @@ async def decide_approval(
     stmt = (
         select(OrderApproval)
         .where(OrderApproval.id == approval_id)
-        .where(OrderApproval.project_id == project_id)
+        .where(OrderApproval.pair_id == project_id)
     )
     result = await session.execute(stmt)
     row = result.scalar_one_or_none()

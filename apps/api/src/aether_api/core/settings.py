@@ -216,7 +216,7 @@ class Settings(BaseSettings):
     # MT5 live trading — mt5-integration change.
     # ------------------------------------------------------------------
     #: Master kill-switch for live order placement. When False (v1
-    #: default) ``POST /api/projects/{id}/orders`` returns 503 with
+    #: default) ``POST /api/pairs/{id}/orders`` returns 503 with
     #: ``{detail: {"code": "live_orders_disabled"}}``. Read-only
     #: endpoints (``/account``, ``/positions``, ``/history``, ``/candles``,
     #: ``GET /orders``) work regardless — they only depend on the per-
@@ -298,7 +298,7 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     #: Master flag. When False (v1 default), the APScheduler does NOT
     #: auto-fire Micro / Profundo jobs. Manual triggers
-    #: (POST /api/projects/{id}/sleep/trigger) still work — that's the
+    #: (POST /api/pairs/{id}/sleep/trigger) still work — that's the
     #: operator escape hatch for debugging the workflow without enabling
     #: the recurring schedule. Crítico (auditor-event) bypasses the
     #: scheduler entirely; see orchestrator.py.

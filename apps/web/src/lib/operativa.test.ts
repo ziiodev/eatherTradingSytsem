@@ -127,7 +127,7 @@ describe("ordersListResponseSchema", () => {
       items: [
         {
           id: "11111111-1111-1111-1111-111111111111",
-          project_id: PROJECT_ID,
+          pair_id: PROJECT_ID,
           agent_id: null,
           symbol: "EURUSD",
           side: "buy",
@@ -243,7 +243,7 @@ describe("fetchOrders URL composition", () => {
   it("emits a clean URL with no query string when no filters are passed", async () => {
     await fetchOrders(PROJECT_ID);
     expect(mockApiGet).toHaveBeenCalledWith(
-      `/api/projects/${PROJECT_ID}/operativa/orders`,
+      `/api/pairs/${PROJECT_ID}/operativa/orders`,
     );
   });
 
@@ -262,7 +262,7 @@ describe("fetchOrders URL composition", () => {
 
     const callArg = mockApiGet.mock.calls[0]?.[0] as string;
     expect(callArg.startsWith(
-      `/api/projects/${PROJECT_ID}/operativa/orders?`,
+      `/api/pairs/${PROJECT_ID}/operativa/orders?`,
     )).toBe(true);
     const qs = new URLSearchParams(callArg.split("?")[1]);
     expect(qs.get("from")).toBe("2026-05-01T00:00:00Z");
@@ -307,7 +307,7 @@ describe("fetchAccountSummary", () => {
 
     const result = await fetchAccountSummary(PROJECT_ID);
     expect(mockApiGet).toHaveBeenCalledWith(
-      `/api/projects/${PROJECT_ID}/operativa/account-summary`,
+      `/api/pairs/${PROJECT_ID}/operativa/account-summary`,
     );
     expect(result.pnl_day).toBeCloseTo(1.23);
   });

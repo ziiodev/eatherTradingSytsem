@@ -27,12 +27,12 @@ describe("validateReturnTo", () => {
     expect(validateReturnTo("/")).toBe("/");
   });
 
-  it("returns '/proyectos' unchanged", () => {
-    expect(validateReturnTo("/proyectos")).toBe("/proyectos");
+  it("returns '/cuentas' unchanged", () => {
+    expect(validateReturnTo("/cuentas")).toBe("/cuentas");
   });
 
-  it("returns '/proyectos?id=1' unchanged (preserves query string)", () => {
-    expect(validateReturnTo("/proyectos?id=1")).toBe("/proyectos?id=1");
+  it("returns '/cuentas?id=1' unchanged (preserves query string)", () => {
+    expect(validateReturnTo("/cuentas?id=1")).toBe("/cuentas?id=1");
   });
 
   // ── open-redirect vectors ──────────────────────────────────────────────

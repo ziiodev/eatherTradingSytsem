@@ -43,7 +43,7 @@ from aether_api.repositories.agent_skill_repository import (
     AgentSkillRepository,
     AgentSkillTenancyError,
 )
-from aether_api.repositories.project_repository import ProjectRepository
+from aether_api.repositories.pair_repository import PairRepository
 from aether_api.tenancy.middleware import (
     admin_required,
     csrf_dependency,
@@ -509,7 +509,7 @@ class AgentRunRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    project_id: uuid.UUID
+    pair_id: uuid.UUID
     dry_run: bool = True  # default-safe — non-dry-run is opt-in.
     inputs: dict[str, Any] = Field(default_factory=dict)
 
@@ -519,7 +519,7 @@ class AgentRunSummary(BaseModel):
 
     id: uuid.UUID
     agent_id: uuid.UUID
-    project_id: uuid.UUID
+    pair_id: uuid.UUID
     status: str
     started_at: datetime
     ended_at: datetime | None
@@ -568,7 +568,7 @@ async def run_agent(
         )
 
     agent_repo = AgentRepository(session)
-    project_repo = ProjectRepository(session)
+    pair_repo = PairRepository(session)
     runs_repo = AgentRunsRepository(session)
 
     # Load BOTH referents under the tenant filter. The 404 path is
@@ -577,14 +577,14 @@ async def run_agent(
     agent = await agent_repo.get_for_user(user.id, agent_id)
     if agent is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="agent not found")
-    project = await project_repo.get_for_user(user.id, payload.project_id)
-    if project is None:
+    pair = await pair_repo.get_for_user(user.id, payload.pair_id)
+    if pair is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="agent not found")
 
     # Tenant integrity is double-checked (defence in depth) — the repos
     # already filtered, but a future change that swaps in a non-tenant
     # repo MUST still trip here.
-    if agent.user_id != user.id or project.user_id != user.id:
+    if agent.user_id != user.id or pair.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="agent not found")
 
     # Insert audit row BEFORE spawning the child so a crash leaves a
@@ -592,7 +592,7 @@ async def run_agent(
     run_row = await runs_repo.record_start(
         user_id=user.id,
         agent_id=agent.id,
-        project_id=project.id,
+        project_id=pair.id,
     )
     await session.commit()
 
@@ -615,7 +615,7 @@ async def run_agent(
     result = await anyio.to_thread.run_sync(
         lambda: engine.run_agent(
             agent_row=agent,
-            project_row=project,
+            project_row=pair,
             inputs=payload.inputs,
             dry_run=payload.dry_run,
             mode="manual",
@@ -642,7 +642,7 @@ async def run_agent(
     return AgentRunDetail(
         id=final.id,
         agent_id=final.agent_id,
-        project_id=final.project_id,
+        pair_id=final.pair_id,
         status=final.status,
         started_at=final.started_at,
         ended_at=final.ended_at,
@@ -682,7 +682,7 @@ async def list_agent_runs(
         AgentRunSummary(
             id=row.id,
             agent_id=row.agent_id,
-            project_id=row.project_id,
+            pair_id=row.pair_id,
             status=row.status,
             started_at=row.started_at,
             ended_at=row.ended_at,

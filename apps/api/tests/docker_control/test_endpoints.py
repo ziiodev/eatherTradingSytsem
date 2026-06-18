@@ -33,17 +33,28 @@ async def _seed_user_and_login(
 ):
     from aether_api.db.session import get_session_maker
 
-    from tests._helpers import seed_user
+    from tests._helpers import seed_account, seed_exchange, seed_user
 
     maker = get_session_maker()
     async with maker() as session:
         user = await seed_user(session, email=email, password=password)
+        exchange = await seed_exchange(
+            session, owner=user, code=f"EX-{email}", name=f"ex-{email}"
+        )
+        account = await seed_account(
+            session, owner=user, exchange=exchange, name="docker-acc"
+        )
         await session.commit()
+        _ACCOUNT_BY_EMAIL["__current__"] = str(account.id)
     resp = await client.post(
         "/api/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
     return user
+
+
+# Per-tenant account id so ``_create_project`` can supply ``account_id``.
+_ACCOUNT_BY_EMAIL: dict[str, str] = {}
 
 
 def _csrf_headers(client) -> dict[str, str]:
@@ -53,7 +64,12 @@ def _csrf_headers(client) -> dict[str, str]:
 
 
 async def _create_project(client, **overrides) -> dict:
+    # ``broker_name`` and the rest of the credential block now live on the
+    # Account; drop any such override from the pair-create body (the seeded
+    # account already carries broker='ICMarkets').
+    overrides.pop("broker_name", None)
     body = {
+        "account_id": _ACCOUNT_BY_EMAIL.get("__current__"),
         "name": "DockerSmoke",
         "symbol": "EURUSD",
         "timeframe": "H1",
@@ -62,7 +78,7 @@ async def _create_project(client, **overrides) -> dict:
     }
     body.update(overrides)
     resp = await client.post(
-        "/api/projects", json=body, headers=_csrf_headers(client)
+        "/api/pairs", json=body, headers=_csrf_headers(client)
     )
     assert resp.status_code == 201, resp.text
     return resp.json()
@@ -78,7 +94,7 @@ async def test_preview_requires_auth(app_client):
     # satisfy it, but the deterministic answer is 403 because the
     # route declares ``Depends(csrf_dependency)`` at the path level.
     resp = await app_client.post(
-        f"/api/projects/{uuid.uuid4()}/dockerfile/preview"
+        f"/api/pairs/{uuid.uuid4()}/dockerfile/preview"
     )
     assert resp.status_code in (401, 403)
 
@@ -88,7 +104,7 @@ async def test_preview_requires_csrf(app_client):
     project = await _create_project(app_client)
     # No CSRF header — must fail.
     resp = await app_client.post(
-        f"/api/projects/{project['id']}/dockerfile/preview"
+        f"/api/pairs/{project['id']}/dockerfile/preview"
     )
     assert resp.status_code == 403
 
@@ -102,10 +118,10 @@ async def test_preview_is_deterministic(app_client):
 
     headers = _csrf_headers(app_client)
     a = await app_client.post(
-        f"/api/projects/{project['id']}/dockerfile/preview", headers=headers
+        f"/api/pairs/{project['id']}/dockerfile/preview", headers=headers
     )
     b = await app_client.post(
-        f"/api/projects/{project['id']}/dockerfile/preview", headers=headers
+        f"/api/pairs/{project['id']}/dockerfile/preview", headers=headers
     )
     assert a.status_code == 200
     assert b.status_code == 200
@@ -122,7 +138,7 @@ async def test_preview_rejects_unsafe_broker_name(app_client):
     await _seed_user_and_login(app_client)
 
     # Insert a project whose broker_name carries a dangerous payload. We
-    # cannot go through POST /api/projects because the upstream Pydantic
+    # cannot go through POST /api/pairs because the upstream Pydantic
     # validator rejects ``;`` outside the allowlist. So we update the
     # row directly via the DB — the test is about the renderer's
     # boundary check, not the create endpoint.
@@ -132,14 +148,19 @@ async def test_preview_rejects_unsafe_broker_name(app_client):
     project = await _create_project(app_client)
     maker = get_session_maker()
     async with maker() as session:
+        # broker_name now lives on the Account (Cuenta), not the pair —
+        # poison the parent account's column so the renderer trips.
         await session.execute(
-            text("UPDATE projects SET broker_name = :b WHERE id = :id"),
+            text(
+                "UPDATE accounts SET broker_name = :b WHERE id = "
+                "(SELECT account_id FROM pairs WHERE id = :id)"
+            ),
             {"b": "IC; rm -rf /", "id": uuid.UUID(project["id"])},
         )
         await session.commit()
 
     resp = await app_client.post(
-        f"/api/projects/{project['id']}/dockerfile/preview",
+        f"/api/pairs/{project['id']}/dockerfile/preview",
         headers=_csrf_headers(app_client),
     )
     assert resp.status_code == 422
@@ -163,7 +184,7 @@ async def test_preview_cross_tenant_returns_404(app_client):
     # User B logs in and tries to read A's project.
     await _seed_user_and_login(app_client, email="b@example.com")
     resp = await app_client.post(
-        f"/api/projects/{project['id']}/dockerfile/preview",
+        f"/api/pairs/{project['id']}/dockerfile/preview",
         headers=_csrf_headers(app_client),
     )
     assert resp.status_code == 404
@@ -185,11 +206,11 @@ async def test_events_feed_lists_audit_rows(app_client):
     maker = get_session_maker()
     async with maker() as session:
         # We need the project's user_id to write a row.
-        from aether_api.models.project import Project
+        from aether_api.models.pair import Pair
         proj_row = (
             await session.execute(
-                __import__("sqlalchemy").select(Project).where(
-                    Project.id == uuid.UUID(project["id"])
+                __import__("sqlalchemy").select(Pair).where(
+                    Pair.id == uuid.UUID(project["id"])
                 )
             )
         ).scalar_one()
@@ -203,7 +224,7 @@ async def test_events_feed_lists_audit_rows(app_client):
         await session.commit()
 
     resp = await app_client.get(
-        f"/api/projects/{project['id']}/container/events"
+        f"/api/pairs/{project['id']}/container/events"
     )
     assert resp.status_code == 200
     payload = resp.json()

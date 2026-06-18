@@ -1,10 +1,10 @@
-"""``/api/projects/{id}/sleep/*`` and ``/api/config-versions/{id}/*``.
+"""``/api/pairs/{id}/sleep/*`` and ``/api/config-versions/{id}/*``.
 
 Endpoints:
 
-* POST   /api/projects/{id}/sleep/trigger      — admin or project owner
-* GET    /api/projects/{id}/sleep/runs         — list project runs
-* GET    /api/projects/{id}/sleep/runs/{run_id}— detail with reflections
+* POST   /api/pairs/{id}/sleep/trigger      — admin or pair owner
+* GET    /api/pairs/{id}/sleep/runs         — list pair runs
+* GET    /api/pairs/{id}/sleep/runs/{run_id}— detail with reflections
 * POST   /api/config-versions/{id}/approve     — apply pending snapshot
 * POST   /api/config-versions/{id}/reject      — mark rejected
 * POST   /api/config-versions/{id}/revert      — re-apply parent snapshot
@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from aether_api.core.settings import get_settings
 from aether_api.db.session import get_session
 from aether_api.models.user import User
-from aether_api.repositories.project_repository import ProjectRepository
+from aether_api.repositories.pair_repository import PairRepository
 from aether_api.repositories.sleep_report_repository import (
     SleepReportRepository,
 )
@@ -47,7 +47,7 @@ from aether_api.sleep.repositories import (
 from aether_api.tenancy.middleware import csrf_dependency, current_user
 
 projects_sleep_router = APIRouter(
-    prefix="/api/projects", tags=["sleep-phase"]
+    prefix="/api/pairs", tags=["sleep-phase"]
 )
 config_versions_router = APIRouter(
     prefix="/api/config-versions", tags=["sleep-phase"]
@@ -67,7 +67,7 @@ class SleepRunSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    project_id: uuid.UUID
+    pair_id: uuid.UUID
     phase_type: str
     status: str
     started_at: datetime | None = None
@@ -90,7 +90,7 @@ class ConfigVersionDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    project_id: uuid.UUID
+    pair_id: uuid.UUID
     parent_version_id: uuid.UUID | None = None
     sleep_run_id: uuid.UUID | None = None
     snapshot: dict[str, Any]
@@ -126,7 +126,7 @@ class TriggerSleepResponse(BaseModel):
 class SleepReportResponse(BaseModel):
     """Outcome digest of one sleep run (1:1 with ``sleep_runs``).
 
-    Returned by ``GET /api/projects/{id}/sleep-runs/{run_id}/report`` —
+    Returned by ``GET /api/pairs/{id}/sleep-runs/{run_id}/report`` —
     added by the sleep-learning-loop change. ``payload`` aggregates the
     structured outcome (Q-Table diff, ingested episodes, semantic rule
     diffs, optional promoted ``config_versions.id``); ``summary_md`` is
@@ -143,15 +143,15 @@ class SleepReportResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# /api/projects/{id}/sleep/...
+# /api/pairs/{id}/sleep/...
 # ---------------------------------------------------------------------------
 @projects_sleep_router.post(
-    "/{project_id}/sleep/trigger",
+    "/{pair_id}/sleep/trigger",
     response_model=TriggerSleepResponse,
     dependencies=[Depends(csrf_dependency)],
 )
 async def trigger_sleep_run(
-    project_id: uuid.UUID,
+    pair_id: uuid.UUID,
     body: TriggerSleepBody,
     request: Request,
     user: Annotated[User, Depends(current_user)],
@@ -159,8 +159,8 @@ async def trigger_sleep_run(
 ) -> TriggerSleepResponse:
     """Manually fire one Micro / Profundo / Crítico sleep run.
 
-    Authorisation: admin OR project owner. Cross-tenant returns 404
-    (matches the rest of /api/projects).
+    Authorisation: admin OR pair owner. Cross-tenant returns 404
+    (matches the rest of /api/pairs).
     """
     if body.phase_type not in PHASE_TYPES:
         raise HTTPException(
@@ -168,28 +168,28 @@ async def trigger_sleep_run(
             detail=f"unknown phase_type {body.phase_type!r}",
         )
 
-    repo = ProjectRepository(session)
-    project = await repo.get_for_user(user.id, project_id)
-    if project is None and not user.is_admin:
+    repo = PairRepository(session)
+    pair = await repo.get_for_user(user.id, pair_id)
+    if pair is None and not user.is_admin:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="project not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="pair not found"
         )
 
-    # Admin escape hatch: an admin can trigger on any project, but the
-    # run is attributed to the project's owner (we look up the row
+    # Admin escape hatch: an admin can trigger on any pair, but the
+    # run is attributed to the pair's owner (we look up the row
     # without the tenant filter).
-    if project is None:
+    if pair is None:
         from sqlalchemy import select
 
-        from aether_api.models.project import Project
+        from aether_api.models.pair import Pair
 
         select_result = await session.execute(
-            select(Project).where(Project.id == project_id)
+            select(Pair).where(Pair.id == pair_id)
         )
-        project = select_result.scalar_one_or_none()
-        if project is None:
+        pair = select_result.scalar_one_or_none()
+        if pair is None:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="project not found"
+                status_code=status.HTTP_404_NOT_FOUND, detail="pair not found"
             )
 
     # Thread the in-process learning cache through so the orchestrator
@@ -201,8 +201,8 @@ async def trigger_sleep_run(
 
     orchestrator_result = await run_sleep_phase(
         session,
-        project_id=project.id,
-        user_id=project.user_id,
+        project_id=pair.id,
+        user_id=pair.user_id,
         phase_type=body.phase_type,
         learning_cache=learning_cache,
     )
@@ -216,25 +216,25 @@ async def trigger_sleep_run(
 
 
 @projects_sleep_router.get(
-    "/{project_id}/sleep/runs",
+    "/{pair_id}/sleep/runs",
     response_model=SleepRunListResponse,
 )
 async def list_sleep_runs(
-    project_id: uuid.UUID,
+    pair_id: uuid.UUID,
     user: Annotated[User, Depends(current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0, le=10_000)] = 0,
 ) -> SleepRunListResponse:
-    repo = ProjectRepository(session)
-    project = await repo.get_for_user(user.id, project_id)
-    if project is None:
+    repo = PairRepository(session)
+    pair = await repo.get_for_user(user.id, pair_id)
+    if pair is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="project not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="pair not found"
         )
     run_repo = SleepRunRepository(session)
     rows = await run_repo.list_for_project(
-        project_id, limit=limit, offset=offset
+        pair_id, limit=limit, offset=offset
     )
     return SleepRunListResponse(
         items=[SleepRunSummary.model_validate(row) for row in rows],
@@ -245,20 +245,20 @@ async def list_sleep_runs(
 
 
 @projects_sleep_router.get(
-    "/{project_id}/sleep/runs/{run_id}",
+    "/{pair_id}/sleep/runs/{run_id}",
     response_model=SleepRunDetailResponse,
 )
 async def get_sleep_run(
-    project_id: uuid.UUID,
+    pair_id: uuid.UUID,
     run_id: uuid.UUID,
     user: Annotated[User, Depends(current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> SleepRunDetailResponse:
-    repo = ProjectRepository(session)
-    project = await repo.get_for_user(user.id, project_id)
-    if project is None:
+    repo = PairRepository(session)
+    pair = await repo.get_for_user(user.id, pair_id)
+    if pair is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="project not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="pair not found"
         )
 
     run_repo = SleepRunRepository(session)
@@ -266,7 +266,7 @@ async def get_sleep_run(
     cv_repo = ConfigVersionRepository(session)
 
     run = await run_repo.get(run_id)
-    if run is None or run.project_id != project_id:
+    if run is None or run.pair_id != pair_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="sleep run not found"
         )
@@ -286,12 +286,12 @@ async def get_sleep_run(
 
 
 @projects_sleep_router.get(
-    "/{project_id}/sleep-runs/{run_id}/report",
+    "/{pair_id}/sleep-runs/{run_id}/report",
     response_model=SleepReportResponse,
     tags=["sleep-phase", "learning"],
 )
 async def get_sleep_report(
-    project_id: uuid.UUID,
+    pair_id: uuid.UUID,
     run_id: uuid.UUID,
     user: Annotated[User, Depends(current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -299,30 +299,30 @@ async def get_sleep_report(
     """Return the 1:1 ``sleep_reports`` row for ``run_id``.
 
     Added by the sleep-learning-loop change. Tenancy is enforced via the
-    ``sleep_runs.project_id → projects.user_id`` JOIN inside the
+    ``sleep_runs.pair_id → projects.user_id`` JOIN inside the
     repository, so cross-tenant access never sees the row. The router
-    additionally pre-checks ownership of ``project_id`` so the path
+    additionally pre-checks ownership of ``pair_id`` so the path
     parameter is also validated.
 
     404 (NOT 403) on:
-      * project not owned by caller
-      * sleep run does not belong to the project
+      * pair not owned by caller
+      * sleep run does not belong to the pair
       * report row not yet written for this run
     """
-    repo = ProjectRepository(session)
-    project = await repo.get_for_user(user.id, project_id)
-    if project is None:
+    repo = PairRepository(session)
+    pair = await repo.get_for_user(user.id, pair_id)
+    if pair is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="project not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="pair not found"
         )
 
-    # Path-shape guard: make sure ``run_id`` is actually under this project.
+    # Path-shape guard: make sure ``run_id`` is actually under this pair.
     # Skipping this would still be safe (the repo JOIN catches it) but the
     # 404 reason would be misleading ("report not found" vs. "run not in
-    # project"). We pay one cheap SELECT for cleaner semantics.
+    # pair"). We pay one cheap SELECT for cleaner semantics.
     run_repo = SleepRunRepository(session)
     run = await run_repo.get(run_id)
-    if run is None or run.project_id != project_id:
+    if run is None or run.pair_id != pair_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="sleep report not found"
         )

@@ -18,7 +18,7 @@ from aether_api.docker_control.docker_lifecycle_transitions import (
     can_apply_event,
     resolve_event,
 )
-from aether_api.services.project_lifecycle import (
+from aether_api.services.pair_lifecycle import (
     VALID_TRANSITIONS,
     InvalidTransition,
 )

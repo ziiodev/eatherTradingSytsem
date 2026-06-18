@@ -1,7 +1,7 @@
 """Docker-control-internal extensions to the project lifecycle state machine.
 
 The canonical state machine in
-:mod:`aether_api.services.project_lifecycle` is OWNED by the
+:mod:`aether_api.services.pair_lifecycle` is OWNED by the
 ``projects-crud`` change. This module is the only place the
 ``project-docker-orchestration`` change extends it — additively, in
 process, and without ever editing the canonical dict.
@@ -29,7 +29,7 @@ Public surface:
   legal edge once expanded through :data:`VALID_TRANSITIONS`.
 
 This module IS allowed to import from
-``aether_api.services.project_lifecycle``. The canonical module MUST
+``aether_api.services.pair_lifecycle``. The canonical module MUST
 NOT import from here — that would create a cycle and entangle the
 sandbox/docker layers with projects-crud's wave 1 surface.
 """
@@ -38,7 +38,7 @@ from __future__ import annotations
 
 from typing import Final
 
-from aether_api.services.project_lifecycle import (
+from aether_api.services.pair_lifecycle import (
     InvalidTransition,
     Status,
     assert_transition,
@@ -51,7 +51,7 @@ from aether_api.services.project_lifecycle import (
 #: module produces, paired with the canonical status the project should
 #: end up in. The lifecycle / reconcile callers expand the event to its
 #: target status and then go through
-#: :func:`aether_api.services.project_lifecycle.assert_transition` for
+#: :func:`aether_api.services.pair_lifecycle.assert_transition` for
 #: the actual edge check — so the docker-internal layer never bypasses
 #: the canonical state machine.
 DOCKER_EVENT_TRANSITIONS: Final[dict[str, Status]] = {
@@ -96,7 +96,7 @@ def can_apply_event(from_status: str, event: str) -> bool:
     """Return True iff ``(from_status, event)`` resolves to an allowed edge.
 
     Composition of :func:`resolve_event` + canonical
-    :func:`aether_api.services.project_lifecycle.can_transition`. Returns
+    :func:`aether_api.services.pair_lifecycle.can_transition`. Returns
     False for unknown events instead of raising — callers that want a
     hard fail use :func:`assert_event`.
     """
@@ -109,11 +109,11 @@ def assert_event(from_status: str, event: str) -> Status:
     """Resolve ``event`` and assert the canonical transition is legal.
 
     Raises :class:`UnknownDockerEvent` for unknown events,
-    :class:`aether_api.services.project_lifecycle.InvalidTransition` for
+    :class:`aether_api.services.pair_lifecycle.InvalidTransition` for
     a known event that maps to an illegal edge in the canonical matrix.
 
     Returns the target status so callers can pass it to
-    :meth:`ProjectRepository.update_status_if` without a second lookup.
+    :meth:`PairRepository.update_status_if` without a second lookup.
     """
     target = resolve_event(event)
     assert_transition(from_status, target)

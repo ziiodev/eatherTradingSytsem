@@ -1,0 +1,837 @@
+"""End-to-end coverage for /api/pairs CRUD + lifecycle.
+
+Scope:
+
+* Auth gating (401 without cookie).
+* Cross-tenant denial (404, never 403).
+* CSRF on state-changing endpoints.
+* CRUD happy paths + validation errors.
+* Lifecycle state machine (every allowed edge + a few denied ones).
+* Delete preconditions (deletable state + no container_id).
+
+The tests use the shared :func:`app_client` fixture and the
+:func:`tests._helpers.seed_user` / :func:`seed_project` helpers.
+
+A note on the auth dance for state-changing requests:
+
+* Cookies are persisted on the httpx client by ``app_client``.
+* The CSRF cookie is non-httpOnly so it's readable via
+  ``app_client.cookies.get(CSRF_COOKIE)`` — we mirror that into the
+  ``X-CSRF-Token`` header on POST/PATCH/DELETE.
+"""
+
+from __future__ import annotations
+
+import uuid
+
+import pytest
+
+from aether_api.auth.cookies import ACCESS_COOKIE, CSRF_COOKIE
+from aether_api.services.pair_lifecycle import (
+    VALID_TRANSITIONS,
+    can_transition,
+)
+
+pytestmark = pytest.mark.integration
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+# Per-email account id, so ``_project_payload`` can supply the required
+# ``account_id`` for the currently-logged-in tenant.
+_ACCOUNT_BY_EMAIL: dict[str, str] = {}
+
+
+async def _seed_user_and_login(
+    client,
+    *,
+    email: str = "ops@example.com",
+    password: str = "correct horse battery staple",
+):
+    """Insert ``email`` (+ exchange + account) and log them in."""
+    from aether_api.db.session import get_session_maker
+
+    from tests._helpers import seed_account, seed_exchange, seed_user
+
+    maker = get_session_maker()
+    async with maker() as session:
+        user = await seed_user(session, email=email, password=password)
+        exchange = await seed_exchange(
+            session, owner=user, code=f"EX-{email}", name=f"ex-{email}"
+        )
+        account = await seed_account(session, owner=user, exchange=exchange)
+        await session.commit()
+        _ACCOUNT_BY_EMAIL[email.lower()] = str(account.id)
+        _ACCOUNT_BY_EMAIL["__current__"] = str(account.id)
+    resp = await client.post(
+        "/api/auth/login", json={"email": email, "password": password}
+    )
+    assert resp.status_code == 200, resp.text
+    return user
+
+
+def _csrf_headers(client) -> dict[str, str]:
+    """Build a ``X-CSRF-Token`` header from the current cookie jar."""
+    token = client.cookies.get(CSRF_COOKIE)
+    assert token, "csrf cookie missing — did you log in first?"
+    return {"X-CSRF-Token": token}
+
+
+def _project_payload(**overrides):
+    body = {
+        "account_id": _ACCOUNT_BY_EMAIL.get("__current__"),
+        "name": "Aether-EURUSD-H1",
+        "description": "Smoke test project",
+        "symbol": "EURUSD",
+        "timeframe": "H1",
+        "mcp_url": "http://mcp.local:8081",
+        "trading_sessions": ["europe", "new_york"],
+    }
+    body.update(overrides)
+    return body
+
+
+async def _create_project(client, **overrides) -> dict:
+    """POST a project and return the parsed JSON body."""
+    resp = await client.post(
+        "/api/pairs",
+        json=_project_payload(**overrides),
+        headers=_csrf_headers(client),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+async def _force_status(project_id: str, *, status: str) -> None:
+    """Bypass the state machine for test scaffolding — flip the DB row directly.
+
+    Used to put a project into a state that the state machine wouldn't let
+    us reach via the HTTP surface (e.g. ``maintenance`` from ``inactive``
+    is fine, but to test ``error -> stopped`` we want to skip the long
+    walk).
+    """
+    from aether_api.db.session import get_session_maker
+    from sqlalchemy import text
+
+    maker = get_session_maker()
+    async with maker() as session:
+        await session.execute(
+            text("UPDATE pairs SET status = :s WHERE id = :id"),
+            {"s": status, "id": uuid.UUID(project_id)},
+        )
+        await session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Auth gating
+# ---------------------------------------------------------------------------
+async def test_list_requires_auth(app_client):
+    resp = await app_client.get("/api/pairs")
+    assert resp.status_code == 401
+
+
+async def test_create_requires_auth(app_client):
+    resp = await app_client.post("/api/pairs", json=_project_payload())
+    # FastAPI may evaluate the CSRF dependency before resolving ``current_user``
+    # (both live on the path-op's dependency list), so an unauthenticated POST
+    # may surface as either 401 (no cookie) or 403 (no CSRF token). Either is
+    # acceptable from the spec's POV — the important invariant is "no 2xx, no
+    # row inserted". We accept both to keep the test robust against dependency
+    # ordering changes.
+    assert resp.status_code in (401, 403)
+
+
+# ---------------------------------------------------------------------------
+# CSRF
+# ---------------------------------------------------------------------------
+async def test_create_without_csrf_is_403(app_client):
+    await _seed_user_and_login(app_client)
+    resp = await app_client.post("/api/pairs", json=_project_payload())
+    assert resp.status_code == 403
+
+
+async def test_patch_without_csrf_is_403(app_client):
+    await _seed_user_and_login(app_client)
+    created = await _create_project(app_client)
+    resp = await app_client.patch(
+        f"/api/pairs/{created['id']}", json={"description": "new"}
+    )
+    assert resp.status_code == 403
+
+
+async def test_lifecycle_without_csrf_is_403(app_client):
+    await _seed_user_and_login(app_client)
+    created = await _create_project(app_client)
+    resp = await app_client.post(f"/api/pairs/{created['id']}/activate")
+    assert resp.status_code == 403
+
+
+async def test_delete_without_csrf_is_403(app_client):
+    await _seed_user_and_login(app_client)
+    created = await _create_project(app_client)
+    resp = await app_client.delete(f"/api/pairs/{created['id']}")
+    assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# CRUD happy paths
+# ---------------------------------------------------------------------------
+async def test_create_project_returns_inactive_with_defaults(app_client):
+    await _seed_user_and_login(app_client)
+    body = await _create_project(app_client)
+
+    assert body["status"] == "inactive"
+    assert body["symbol"] == "EURUSD"
+    assert body["timeframe"] == "H1"
+    # Charter defaults applied because the caller did not pass them.
+    assert body["risk_per_trade"] == "1.0" or float(body["risk_per_trade"]) == 1.0
+    assert float(body["max_daily_dd"]) == 3.0
+    assert float(body["max_total_dd"]) == 8.0
+    assert float(body["max_exposure"]) == 10.0
+    assert body["trading_sessions"] == ["europe", "new_york"]
+
+
+async def test_list_returns_paginated_payload(app_client):
+    await _seed_user_and_login(app_client)
+    for i in range(3):
+        await _create_project(app_client, name=f"Proj-{i}", symbol="EURUSD")
+    resp = await app_client.get("/api/pairs")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 3
+    assert body["limit"] == 50
+    assert body["offset"] == 0
+    assert len(body["items"]) == 3
+    assert resp.headers["X-Total-Count"] == "3"
+
+
+async def test_list_filters_by_status(app_client):
+    await _seed_user_and_login(app_client)
+    a = await _create_project(app_client, name="A", symbol="EURUSD")
+    # Move A → active via lifecycle endpoint.
+    await app_client.post(
+        f"/api/pairs/{a['id']}/activate", headers=_csrf_headers(app_client)
+    )
+    await _create_project(app_client, name="B", symbol="EURUSD")
+
+    resp = await app_client.get("/api/pairs?status=active")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 1
+    assert body["items"][0]["name"] == "A"
+
+
+async def test_get_project_returns_full_detail(app_client):
+    await _seed_user_and_login(app_client)
+    created = await _create_project(app_client)
+    resp = await app_client.get(f"/api/pairs/{created['id']}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["id"] == created["id"]
+    assert body["mcp_url"] == "http://mcp.local:8081"
+    assert body["auditor_params"] == {}
+
+
+async def test_patch_updates_allowed_fields(app_client):
+    await _seed_user_and_login(app_client)
+    created = await _create_project(app_client)
+    resp = await app_client.patch(
+        f"/api/pairs/{created['id']}",
+        json={"description": "updated", "notes": "n1"},
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["description"] == "updated"
+    assert body["notes"] == "n1"
+
+
+async def test_patch_with_status_is_400(app_client):
+    await _seed_user_and_login(app_client)
+    created = await _create_project(app_client)
+    resp = await app_client.patch(
+        f"/api/pairs/{created['id']}",
+        json={"status": "active"},
+        headers=_csrf_headers(app_client),
+    )
+    # extra="forbid" → 422 from FastAPI; we accept either 400 or 422 as
+    # the "client sent a forbidden field" outcome but never 200.
+    assert resp.status_code in (400, 422)
+
+
+async def test_patch_empty_body_is_validation_error(app_client):
+    await _seed_user_and_login(app_client)
+    created = await _create_project(app_client)
+    resp = await app_client.patch(
+        f"/api/pairs/{created['id']}",
+        json={},
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code in (400, 422)
+
+
+# ---------------------------------------------------------------------------
+# Validation
+# ---------------------------------------------------------------------------
+async def test_create_rejects_invalid_trading_session(app_client):
+    await _seed_user_and_login(app_client)
+    resp = await app_client.post(
+        "/api/pairs",
+        json=_project_payload(trading_sessions=["mars"]),
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code in (400, 422)
+
+
+async def test_create_rejects_invalid_timeframe(app_client):
+    await _seed_user_and_login(app_client)
+    resp = await app_client.post(
+        "/api/pairs",
+        json=_project_payload(timeframe="H7"),
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code in (400, 422)
+
+
+async def test_create_rejects_duplicate_name_per_tenant(app_client):
+    await _seed_user_and_login(app_client)
+    await _create_project(app_client, name="dup")
+    resp = await app_client.post(
+        "/api/pairs",
+        json=_project_payload(name="dup"),
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 409
+
+
+async def test_list_status_filter_rejects_garbage(app_client):
+    await _seed_user_and_login(app_client)
+    resp = await app_client.get("/api/pairs?status=banana")
+    assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Cross-tenant denial — return 404, never 403
+# ---------------------------------------------------------------------------
+async def test_get_cross_tenant_returns_404(app_client):
+    # Seed A and create their project.
+    await _seed_user_and_login(app_client, email="a@example.com")
+    a_project = await _create_project(app_client)
+    # Log out A by clearing cookies, then log B in.
+    app_client.cookies.clear()
+    await _seed_user_and_login(app_client, email="b@example.com")
+
+    resp = await app_client.get(f"/api/pairs/{a_project['id']}")
+    assert resp.status_code == 404
+
+
+async def test_patch_cross_tenant_returns_404(app_client):
+    await _seed_user_and_login(app_client, email="a@example.com")
+    a_project = await _create_project(app_client)
+    app_client.cookies.clear()
+    await _seed_user_and_login(app_client, email="b@example.com")
+
+    resp = await app_client.patch(
+        f"/api/pairs/{a_project['id']}",
+        json={"description": "x"},
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 404
+
+
+async def test_delete_cross_tenant_returns_404(app_client):
+    await _seed_user_and_login(app_client, email="a@example.com")
+    a_project = await _create_project(app_client)
+    app_client.cookies.clear()
+    await _seed_user_and_login(app_client, email="b@example.com")
+
+    resp = await app_client.delete(
+        f"/api/pairs/{a_project['id']}", headers=_csrf_headers(app_client)
+    )
+    assert resp.status_code == 404
+
+
+async def test_lifecycle_cross_tenant_returns_404(app_client):
+    await _seed_user_and_login(app_client, email="a@example.com")
+    a_project = await _create_project(app_client)
+    app_client.cookies.clear()
+    await _seed_user_and_login(app_client, email="b@example.com")
+
+    resp = await app_client.post(
+        f"/api/pairs/{a_project['id']}/activate",
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Lifecycle — happy paths
+# ---------------------------------------------------------------------------
+async def test_activate_from_inactive(app_client):
+    await _seed_user_and_login(app_client)
+    created = await _create_project(app_client)
+    resp = await app_client.post(
+        f"/api/pairs/{created['id']}/activate",
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "active"
+
+
+async def test_pause_after_activate(app_client):
+    await _seed_user_and_login(app_client)
+    created = await _create_project(app_client)
+    await app_client.post(
+        f"/api/pairs/{created['id']}/activate",
+        headers=_csrf_headers(app_client),
+    )
+    resp = await app_client.post(
+        f"/api/pairs/{created['id']}/pause",
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "paused"
+
+
+async def test_stop_from_active(app_client):
+    await _seed_user_and_login(app_client)
+    created = await _create_project(app_client)
+    await app_client.post(
+        f"/api/pairs/{created['id']}/activate",
+        headers=_csrf_headers(app_client),
+    )
+    resp = await app_client.post(
+        f"/api/pairs/{created['id']}/stop",
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "stopped"
+
+
+async def test_mark_error_from_active(app_client):
+    await _seed_user_and_login(app_client)
+    created = await _create_project(app_client)
+    await app_client.post(
+        f"/api/pairs/{created['id']}/activate",
+        headers=_csrf_headers(app_client),
+    )
+    resp = await app_client.post(
+        f"/api/pairs/{created['id']}/mark-error",
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "error"
+
+
+async def test_maintenance_from_inactive(app_client):
+    await _seed_user_and_login(app_client)
+    created = await _create_project(app_client)
+    resp = await app_client.post(
+        f"/api/pairs/{created['id']}/maintenance",
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "maintenance"
+
+
+# ---------------------------------------------------------------------------
+# Lifecycle — denied transitions
+# ---------------------------------------------------------------------------
+async def test_pause_from_inactive_is_409(app_client):
+    await _seed_user_and_login(app_client)
+    created = await _create_project(app_client)
+    resp = await app_client.post(
+        f"/api/pairs/{created['id']}/pause",
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 409
+
+
+async def test_activate_from_error_is_409(app_client):
+    """``error -> active`` is NOT a valid transition per the matrix."""
+    await _seed_user_and_login(app_client)
+    created = await _create_project(app_client)
+    # Force the row to ``error`` so we don't depend on the long path.
+    await _force_status(created["id"], status="error")
+    resp = await app_client.post(
+        f"/api/pairs/{created['id']}/activate",
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 409
+    body = resp.json()
+    assert body["detail"]["code"] == "invalid_transition"
+    assert body["detail"]["from"] == "error"
+    assert body["detail"]["to"] == "active"
+
+
+async def test_state_machine_matrix_consistency():
+    """Sanity: ``can_transition`` matches the published matrix exactly."""
+    statuses = ["inactive", "active", "paused", "stopped", "error", "maintenance"]
+    for f in statuses:
+        for t in statuses:
+            expected = t in VALID_TRANSITIONS[f]  # type: ignore[index]
+            assert can_transition(f, t) is expected, (f, t)
+
+
+# ---------------------------------------------------------------------------
+# Delete
+# ---------------------------------------------------------------------------
+async def test_delete_inactive_succeeds(app_client):
+    await _seed_user_and_login(app_client)
+    created = await _create_project(app_client)
+    resp = await app_client.delete(
+        f"/api/pairs/{created['id']}", headers=_csrf_headers(app_client)
+    )
+    assert resp.status_code == 204
+
+    follow_up = await app_client.get(f"/api/pairs/{created['id']}")
+    assert follow_up.status_code == 404
+
+
+async def test_delete_active_is_409(app_client):
+    await _seed_user_and_login(app_client)
+    created = await _create_project(app_client)
+    await app_client.post(
+        f"/api/pairs/{created['id']}/activate",
+        headers=_csrf_headers(app_client),
+    )
+    resp = await app_client.delete(
+        f"/api/pairs/{created['id']}", headers=_csrf_headers(app_client)
+    )
+    assert resp.status_code == 409
+
+
+async def test_delete_with_container_id_is_409(app_client):
+    """Even when in ``stopped``, a live container_id blocks delete."""
+    await _seed_user_and_login(app_client)
+    created = await _create_project(app_client)
+    # active → stopped via lifecycle, then plant a container_id by hand.
+    await app_client.post(
+        f"/api/pairs/{created['id']}/activate",
+        headers=_csrf_headers(app_client),
+    )
+    await app_client.post(
+        f"/api/pairs/{created['id']}/stop",
+        headers=_csrf_headers(app_client),
+    )
+
+    from aether_api.db.session import get_session_maker
+    from sqlalchemy import text
+
+    maker = get_session_maker()
+    async with maker() as session:
+        await session.execute(
+            text("UPDATE pairs SET container_id = 'live123' WHERE id = :id"),
+            {"id": uuid.UUID(created["id"])},
+        )
+        await session.commit()
+
+    resp = await app_client.delete(
+        f"/api/pairs/{created['id']}", headers=_csrf_headers(app_client)
+    )
+    assert resp.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# Auth cookie sanity (catches login-helper drift).
+# ---------------------------------------------------------------------------
+async def test_login_helper_sets_access_cookie(app_client):
+    await _seed_user_and_login(app_client)
+    assert app_client.cookies.get(ACCESS_COOKIE) is not None
+
+
+# ---------------------------------------------------------------------------
+# Orchestrator agent slot — added in migration 0010 (charter correction).
+# ---------------------------------------------------------------------------
+async def _seed_orchestrator_for_user(email: str) -> str:
+    """Seed an Orquestador agent owned by ``email`` and return its id."""
+    from aether_api.db.session import get_session_maker
+
+    from tests._helpers import seed_agent
+    from sqlalchemy import select
+    from aether_api.models.user import User
+
+    maker = get_session_maker()
+    async with maker() as session:
+        owner = (
+            await session.execute(select(User).where(User.email == email.lower()))
+        ).scalar_one()
+        agent = await seed_agent(
+            session,
+            owner=owner,
+            name=f"orc-{email}",
+            type="orchestrator",
+            logica="def orchestrate(ctx):\n    return None\n",
+        )
+        await session.commit()
+        return str(agent.id)
+
+
+async def test_create_project_with_orchestrator_agent_id(app_client):
+    """POST /api/pairs accepts ``orchestrator_agent_id`` and persists it."""
+    await _seed_user_and_login(app_client, email="orc-c@example.com")
+    orc_id = await _seed_orchestrator_for_user("orc-c@example.com")
+
+    resp = await app_client.post(
+        "/api/pairs",
+        json=_project_payload(orchestrator_agent_id=orc_id),
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["orchestrator_agent_id"] == orc_id
+    # The matching JSONB params block defaults to {} server-side.
+    assert body["orchestrator_params"] == {}
+
+
+async def test_patch_project_swaps_orchestrator(app_client):
+    """PATCH /api/pairs/{id} can change the bound Orquestador in place."""
+    await _seed_user_and_login(app_client, email="orc-p@example.com")
+    orc_one = await _seed_orchestrator_for_user("orc-p@example.com")
+    # Seed a second orchestrator and grab its id.
+    from aether_api.db.session import get_session_maker
+    from aether_api.models.user import User
+    from sqlalchemy import select
+
+    from tests._helpers import seed_agent
+
+    maker = get_session_maker()
+    async with maker() as session:
+        owner = (
+            await session.execute(
+                select(User).where(User.email == "orc-p@example.com")
+            )
+        ).scalar_one()
+        second = await seed_agent(
+            session,
+            owner=owner,
+            name="orc-second",
+            type="orchestrator",
+            logica="def orchestrate(ctx):\n    return None\n",
+        )
+        await session.commit()
+        orc_two = str(second.id)
+
+    created = await _create_project(
+        app_client, orchestrator_agent_id=orc_one
+    )
+    assert created["orchestrator_agent_id"] == orc_one
+
+    resp = await app_client.patch(
+        f"/api/pairs/{created['id']}",
+        json={"orchestrator_agent_id": orc_two},
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["orchestrator_agent_id"] == orc_two
+
+
+async def test_patch_project_updates_orchestrator_params(app_client):
+    """``orchestrator_params`` JSONB is patchable like the other params blocks."""
+    await _seed_user_and_login(app_client, email="orc-prm@example.com")
+    created = await _create_project(app_client)
+    resp = await app_client.patch(
+        f"/api/pairs/{created['id']}",
+        json={"orchestrator_params": {"max_concurrent": 4, "mode": "strict"}},
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["orchestrator_params"] == {
+        "max_concurrent": 4,
+        "mode": "strict",
+    }
+
+
+async def test_cross_tenant_orchestrator_id_returns_404_on_get(app_client):
+    """Tenant A creates an orchestrator and a project that wires it.
+    Tenant B fetches the project by id → 404 (existence is not disclosed)."""
+    await _seed_user_and_login(app_client, email="orc-a@example.com")
+    orc_id = await _seed_orchestrator_for_user("orc-a@example.com")
+    a_project = await _create_project(
+        app_client, orchestrator_agent_id=orc_id
+    )
+
+    # Swap to tenant B.
+    app_client.cookies.clear()
+    await _seed_user_and_login(app_client, email="orc-b@example.com")
+
+    resp = await app_client.get(f"/api/pairs/{a_project['id']}")
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Marker + Tutor agent slots — added in migration 0012 (charter correction).
+# ---------------------------------------------------------------------------
+async def _seed_typed_agent_for_user(
+    email: str,
+    *,
+    type_: str,
+    name: str,
+    entrypoint_def: str,
+) -> str:
+    """Seed an agent of an arbitrary ``type_`` owned by ``email``."""
+    from aether_api.db.session import get_session_maker
+
+    from tests._helpers import seed_agent
+    from sqlalchemy import select
+    from aether_api.models.user import User
+
+    maker = get_session_maker()
+    async with maker() as session:
+        owner = (
+            await session.execute(select(User).where(User.email == email.lower()))
+        ).scalar_one()
+        agent = await seed_agent(
+            session,
+            owner=owner,
+            name=name,
+            type=type_,
+            logica=entrypoint_def,
+        )
+        await session.commit()
+        return str(agent.id)
+
+
+async def test_create_project_with_marker_and_tutor_agent_ids(app_client):
+    """POST /api/pairs accepts the new ``marker_agent_id`` and
+    ``tutor_agent_id`` slots (migration 0012) and persists them."""
+    await _seed_user_and_login(app_client, email="mk-tu@example.com")
+    marker_id = await _seed_typed_agent_for_user(
+        "mk-tu@example.com",
+        type_="marker",
+        name="mk-1",
+        entrypoint_def="def mark_signal(ctx):\n    return None\n",
+    )
+    tutor_id = await _seed_typed_agent_for_user(
+        "mk-tu@example.com",
+        type_="tutor",
+        name="tu-1",
+        entrypoint_def="def on_sleep(ctx):\n    return None\n",
+    )
+
+    resp = await app_client.post(
+        "/api/pairs",
+        json=_project_payload(
+            marker_agent_id=marker_id, tutor_agent_id=tutor_id
+        ),
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["marker_agent_id"] == marker_id
+    assert body["tutor_agent_id"] == tutor_id
+    # Matching JSONB params default to {} server-side.
+    assert body["marker_params"] == {}
+    assert body["tutor_params"] == {}
+
+
+async def test_patch_project_swaps_marker(app_client):
+    """PATCH /api/pairs/{id} can change the bound Marker in place."""
+    await _seed_user_and_login(app_client, email="mk-swap@example.com")
+    marker_one = await _seed_typed_agent_for_user(
+        "mk-swap@example.com",
+        type_="marker",
+        name="mk-one",
+        entrypoint_def="def mark_signal(ctx):\n    return None\n",
+    )
+    marker_two = await _seed_typed_agent_for_user(
+        "mk-swap@example.com",
+        type_="marker",
+        name="mk-two",
+        entrypoint_def="def mark_signal(ctx):\n    return None\n",
+    )
+    created = await _create_project(app_client, marker_agent_id=marker_one)
+    assert created["marker_agent_id"] == marker_one
+
+    resp = await app_client.patch(
+        f"/api/pairs/{created['id']}",
+        json={"marker_agent_id": marker_two},
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["marker_agent_id"] == marker_two
+
+
+async def test_patch_project_swaps_tutor(app_client):
+    """PATCH /api/pairs/{id} can change the bound Tutor in place."""
+    await _seed_user_and_login(app_client, email="tu-swap@example.com")
+    tutor_one = await _seed_typed_agent_for_user(
+        "tu-swap@example.com",
+        type_="tutor",
+        name="tu-one",
+        entrypoint_def="def on_sleep(ctx):\n    return None\n",
+    )
+    tutor_two = await _seed_typed_agent_for_user(
+        "tu-swap@example.com",
+        type_="tutor",
+        name="tu-two",
+        entrypoint_def="def on_sleep(ctx):\n    return None\n",
+    )
+    created = await _create_project(app_client, tutor_agent_id=tutor_one)
+    assert created["tutor_agent_id"] == tutor_one
+
+    resp = await app_client.patch(
+        f"/api/pairs/{created['id']}",
+        json={"tutor_agent_id": tutor_two},
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["tutor_agent_id"] == tutor_two
+
+
+async def test_patch_project_updates_marker_params(app_client):
+    """``marker_params`` JSONB is patchable like the other params blocks."""
+    await _seed_user_and_login(app_client, email="mk-prm@example.com")
+    created = await _create_project(app_client)
+    resp = await app_client.patch(
+        f"/api/pairs/{created['id']}",
+        json={"marker_params": {"min_confidence": 0.7, "regimes": ["trend"]}},
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["marker_params"] == {
+        "min_confidence": 0.7,
+        "regimes": ["trend"],
+    }
+
+
+async def test_patch_project_updates_tutor_params(app_client):
+    """``tutor_params`` JSONB is patchable like the other params blocks."""
+    await _seed_user_and_login(app_client, email="tu-prm@example.com")
+    created = await _create_project(app_client)
+    resp = await app_client.patch(
+        f"/api/pairs/{created['id']}",
+        json={"tutor_params": {"sleep_kind": "deep", "max_episodes": 500}},
+        headers=_csrf_headers(app_client),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["tutor_params"] == {
+        "sleep_kind": "deep",
+        "max_episodes": 500,
+    }
+
+
+async def test_cross_tenant_marker_id_returns_404_on_get(app_client):
+    """Tenant A creates a Marker and a project that wires it.
+    Tenant B fetches the project by id → 404 (no existence leak)."""
+    await _seed_user_and_login(app_client, email="mk-a@example.com")
+    marker_id = await _seed_typed_agent_for_user(
+        "mk-a@example.com",
+        type_="marker",
+        name="mk-a-1",
+        entrypoint_def="def mark_signal(ctx):\n    return None\n",
+    )
+    a_project = await _create_project(
+        app_client, marker_agent_id=marker_id
+    )
+
+    # Swap to tenant B.
+    app_client.cookies.clear()
+    await _seed_user_and_login(app_client, email="mk-b@example.com")
+
+    resp = await app_client.get(f"/api/pairs/{a_project['id']}")
+    assert resp.status_code == 404

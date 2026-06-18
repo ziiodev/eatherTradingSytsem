@@ -87,7 +87,7 @@ class AgentRunsRepository(BaseRepository):
         row = AgentRun(
             user_id=user_id,
             agent_id=agent_id,
-            project_id=project_id,
+            pair_id=project_id,
             status="running",
         )
         self.session.add(row)

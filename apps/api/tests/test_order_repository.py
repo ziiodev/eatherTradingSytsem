@@ -66,7 +66,7 @@ async def _seed_orders(
     async with maker() as session:
         for r in rows:
             order = Order(
-                project_id=project_id,
+                pair_id=project_id,
                 user_id=user_id,
                 agent_id=None,
                 symbol=r.get("symbol", "EURUSD"),

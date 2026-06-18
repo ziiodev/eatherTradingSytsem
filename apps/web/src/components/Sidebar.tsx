@@ -21,6 +21,11 @@ import { logout } from "@/lib/auth";
  * Charter-mandated fixed sidebar. The four entries, their order, and their
  * spelling (including the accent in `Configuración`) are PRODUCT-FIXED.
  * Do not add, rename, or reorder these without explicit user approval.
+ *
+ * accounts-pairs-restructure: the first entry was renamed `Proyectos` →
+ * `Cuentas` (and its href `/proyectos` → `/cuentas`) per the explicit
+ * user approval recorded in the change decisions. The other three entries
+ * are untouched.
  */
 interface SidebarEntry {
   href: string;
@@ -29,7 +34,7 @@ interface SidebarEntry {
 }
 
 const ENTRIES: ReadonlyArray<SidebarEntry> = [
-  { href: "/proyectos", label: "Proyectos", Icon: LayoutGrid },
+  { href: "/cuentas", label: "Cuentas", Icon: LayoutGrid },
   { href: "/agentes", label: "Agentes", Icon: Bot },
   { href: "/skills", label: "Skills", Icon: Sparkles },
   { href: "/configuracion", label: "Configuración", Icon: Settings },

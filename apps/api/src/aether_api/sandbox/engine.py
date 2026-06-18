@@ -131,7 +131,7 @@ def _build_ctx(
 
     return AgentContext(
         user_id=str(project_row.user_id),
-        project_id=str(project_row.id),
+        pair_id=str(project_row.id),
         agent_id=str(agent_row.id),
         symbol=project_row.symbol,
         timeframe=project_row.timeframe,
@@ -266,7 +266,7 @@ class Engine:
         if ctx.learning_enabled or ctx.operativa_enabled:
             try:
                 user_uuid = uuid.UUID(ctx.user_id)
-                project_uuid = uuid.UUID(ctx.project_id)
+                pair_uuid = uuid.UUID(ctx.pair_id)
                 agent_uuid: uuid.UUID | None
                 try:
                     agent_uuid = uuid.UUID(ctx.agent_id) if ctx.agent_id else None
@@ -289,7 +289,7 @@ class Engine:
                     conn=rpc_parent,
                     handlers=RpcHandlers(
                         user_id=user_uuid,
-                        project_id=project_uuid,
+                        project_id=pair_uuid,
                         handlers=handlers_map,
                         agent_id=agent_uuid,
                     ),

@@ -43,7 +43,7 @@ class ContainerEventsRepository:
         """
         truncated_error = error[:4096] if error else None
         row = ContainerEvent(
-            project_id=project_id,
+            pair_id=project_id,
             user_id=user_id,
             action=action,
             status=status,
@@ -64,7 +64,7 @@ class ContainerEventsRepository:
         """Newest-first feed for the project infraestructura panel."""
         stmt = (
             select(ContainerEvent)
-            .where(ContainerEvent.project_id == project_id)
+            .where(ContainerEvent.pair_id == project_id)
             .order_by(ContainerEvent.created_at.desc(), ContainerEvent.id.desc())
             .limit(limit)
             .offset(offset)
@@ -74,7 +74,7 @@ class ContainerEventsRepository:
 
     async def count_for_project(self, project_id: uuid.UUID) -> int:
         stmt = select(func.count(ContainerEvent.id)).where(
-            ContainerEvent.project_id == project_id
+            ContainerEvent.pair_id == project_id
         )
         result = await self.session.execute(stmt)
         return int(result.scalar() or 0)

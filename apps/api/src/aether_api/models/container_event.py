@@ -54,9 +54,9 @@ class ContainerEvent(Base):
         server_default=text("gen_random_uuid()"),
     )
 
-    project_id: Mapped[uuid.UUID] = mapped_column(
+    pair_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("projects.id", ondelete="RESTRICT"),
+        ForeignKey("pairs.id", ondelete="RESTRICT"),
         nullable=False,
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -78,6 +78,6 @@ class ContainerEvent(Base):
 
     def __repr__(self) -> str:  # pragma: no cover — debug aid only
         return (
-            f"<ContainerEvent id={self.id} project={self.project_id} "
+            f"<ContainerEvent id={self.id} pair={self.pair_id} "
             f"action={self.action!r} status={self.status!r}>"
         )

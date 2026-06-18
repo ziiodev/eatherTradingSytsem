@@ -49,9 +49,9 @@ class SleepRun(Base):
         server_default=text("gen_random_uuid()"),
     )
 
-    project_id: Mapped[uuid.UUID] = mapped_column(
+    pair_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("projects.id", ondelete="RESTRICT"),
+        ForeignKey("pairs.id", ondelete="RESTRICT"),
         nullable=False,
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -73,7 +73,7 @@ class SleepRun(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # --- Relations
-    project = relationship("Project", lazy="raise")
+    pair = relationship("Pair", lazy="raise")
     user = relationship("User", lazy="raise")
     reflections = relationship(
         "SleepReflection",
@@ -95,6 +95,6 @@ class SleepRun(Base):
 
     def __repr__(self) -> str:  # pragma: no cover
         return (
-            f"<SleepRun id={self.id} project_id={self.project_id} "
+            f"<SleepRun id={self.id} pair_id={self.pair_id} "
             f"phase={self.phase_type} status={self.status}>"
         )

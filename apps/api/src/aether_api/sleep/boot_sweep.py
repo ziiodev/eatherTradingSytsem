@@ -21,7 +21,7 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aether_api.core.settings import get_settings
-from aether_api.repositories.project_repository import ProjectRepository
+from aether_api.repositories.pair_repository import PairRepository
 from aether_api.sleep.repositories import SleepRunRepository
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ async def recover_stale_runs(session: AsyncSession) -> int:
     """
     settings = get_settings()
     run_repo = SleepRunRepository(session)
-    proj_repo = ProjectRepository(session)
+    proj_repo = PairRepository(session)
 
     stale = await run_repo.mark_stale_running_as_crashed(
         stale_minutes=settings.sleep_stale_run_minutes
@@ -49,14 +49,14 @@ async def recover_stale_runs(session: AsyncSession) -> int:
         # state, we don't fight the operator.
         await proj_repo.update_status_if(
             run.user_id,
-            run.project_id,
+            run.pair_id,
             from_status="maintenance",
             to_status="active",
         )
         logger.warning(
             "sleep.boot_sweep: marked sleep_run %s crashed (project %s)",
             run.id,
-            run.project_id,
+            run.pair_id,
         )
 
     await session.commit()

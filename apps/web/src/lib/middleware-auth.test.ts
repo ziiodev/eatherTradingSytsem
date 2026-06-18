@@ -48,7 +48,7 @@ function fakeRequest(opts: {
   pathname?: string;
   search?: string;
 }): unknown {
-  const pathname = opts.pathname ?? "/proyectos";
+  const pathname = opts.pathname ?? "/cuentas";
   const search = opts.search ?? "";
   const url = `http://localhost:3000${pathname}${search}`;
   const cookies: FakeCookieStore = {
@@ -93,13 +93,13 @@ describe("edge middleware (RS256 JWKS verify)", () => {
 
   it("redirects to /login when no cookie is present", async () => {
     const resp = (await middleware(
-      fakeRequest({ cookie: null, pathname: "/proyectos" })
+      fakeRequest({ cookie: null, pathname: "/cuentas" })
     )) as { headers: Headers; status: number };
 
     const location = resp.headers.get("location");
     expect(location).toBeTruthy();
     expect(location).toContain("/login");
-    expect(location).toContain("return_to=%2Fproyectos");
+    expect(location).toContain("return_to=%2Fcuentas");
     expect(jwtVerifyMock).not.toHaveBeenCalled();
   });
 

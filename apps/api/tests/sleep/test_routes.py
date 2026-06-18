@@ -63,7 +63,7 @@ async def _seed_project_and_agents(user):
 
 
 async def test_list_runs_requires_auth(app_client) -> None:
-    resp = await app_client.get(f"/api/projects/{uuid.uuid4()}/sleep/runs")
+    resp = await app_client.get(f"/api/pairs/{uuid.uuid4()}/sleep/runs")
     assert resp.status_code == 401
 
 
@@ -75,7 +75,7 @@ async def test_list_runs_cross_tenant_is_404(app_client) -> None:
     app_client.cookies.clear()
     user_b = await _login(app_client, email="b@example.com")
     proj_a = await _seed_project_and_agents(user_a)
-    resp = await app_client.get(f"/api/projects/{proj_a.id}/sleep/runs")
+    resp = await app_client.get(f"/api/pairs/{proj_a.id}/sleep/runs")
     # 404 because B does not own the project; we never reveal 403.
     assert resp.status_code == 404
     assert user_b is not None  # silence unused
@@ -90,7 +90,7 @@ async def test_trigger_unknown_phase_returns_400(app_client) -> None:
     user = await _login(app_client)
     project = await _seed_project_and_agents(user)
     resp = await app_client.post(
-        f"/api/projects/{project.id}/sleep/trigger",
+        f"/api/pairs/{project.id}/sleep/trigger",
         json={"phase_type": "siesta"},
         headers=_csrf_headers(app_client),
     )
@@ -172,7 +172,7 @@ async def test_revert_window_enforced(app_client) -> None:
             hours=window + 5
         )
         cv = ConfigVersion(
-            project_id=proj.id,
+            pair_id=proj.id,
             snapshot={"notes": "old"},
             risk_class="bajo",
             status="applied",
@@ -215,7 +215,7 @@ async def test_trigger_returns_200_with_failed_when_no_agents(app_client) -> Non
         pid = proj.id
 
     resp = await app_client.post(
-        f"/api/projects/{pid}/sleep/trigger",
+        f"/api/pairs/{pid}/sleep/trigger",
         json={"phase_type": "micro"},
         headers=_csrf_headers(app_client),
     )

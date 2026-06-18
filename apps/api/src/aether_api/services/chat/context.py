@@ -32,7 +32,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aether_api.models.project import Project
+from aether_api.models.pair import Pair
 from aether_api.repositories.q_table_repository import QTableRepository
 from aether_api.repositories.semantic_memory_repository import (
     SemanticMemoryRepository,
@@ -49,7 +49,7 @@ DEFAULT_MAX_TOOL_ROUNDTRIPS: int = 5
 class ChatDispatchContext:
     """Frozen carrier of tenancy + persistence + LLM client.
 
-    ``user_id`` / ``project_id`` / ``conversation_id`` come from the
+    ``user_id`` / ``pair_id`` / ``conversation_id`` come from the
     authenticated request and are NEVER overridden by anything the
     LLM emits — every tool sanitises its input to drop those keys
     before calling the underlying repository.
@@ -65,7 +65,7 @@ class ChatDispatchContext:
     """
 
     user_id: uuid.UUID
-    project_id: uuid.UUID
+    pair_id: uuid.UUID
     conversation_id: uuid.UUID
     db_session_factory: Callable[[], Any]
     llm_client: Any
@@ -76,43 +76,42 @@ class ChatDispatchContext:
 
 
 # ---------------------------------------------------------------------------
-# Project snapshot — feeds the dynamic system-prompt block.
+# Pair snapshot — feeds the dynamic system-prompt block.
 # ---------------------------------------------------------------------------
 
 
-async def build_project_snapshot(
+async def build_pair_snapshot(
     session: AsyncSession,
     *,
     user_id: uuid.UUID,
-    project_id: uuid.UUID,
+    pair_id: uuid.UUID,
 ) -> dict[str, Any]:
-    """Assemble a JSON-serialisable snapshot of the project's current state.
+    """Assemble a JSON-serialisable snapshot of the pair's current state.
 
-    Returns ``{}`` (and an explicit ``project_id``) when the caller does
-    not own ``project_id`` — cross-tenant probes get a neutral payload
-    that does not disclose existence.
+    Returns a neutral payload when the caller does not own ``pair_id`` —
+    cross-tenant probes do not disclose existence.
 
     Fields:
 
-    * ``project`` — name / symbol / timeframe / status / risk knobs.
-      ``None`` when the project does not exist or is cross-tenant.
+    * ``pair`` — name / symbol / timeframe / status / risk knobs.
+      ``None`` when the pair does not exist or is cross-tenant.
     * ``latest_sleep_report`` — ``{sleep_run_id, summary, overall_score,
       generated_at}`` or ``None``.
     * ``active_rules_count`` — int. Number of ``semantic_memory`` rows
-      with ``active = true`` for the project.
+      with ``active = true`` for the pair.
     * ``q_table_version`` — int or ``None``. Highest version on
-      ``q_tables`` for the project.
+      ``q_tables`` for the pair.
     * ``generated_at`` — ISO-8601 stamp; useful for the LLM to reason
       about how fresh the snapshot is.
     """
-    proj_stmt = select(Project).where(
-        Project.id == project_id, Project.user_id == user_id
+    pair_stmt = select(Pair).where(
+        Pair.id == pair_id, Pair.user_id == user_id
     )
-    proj_row = (await session.execute(proj_stmt)).scalar_one_or_none()
+    proj_row = (await session.execute(pair_stmt)).scalar_one_or_none()
 
     if proj_row is None:
         return {
-            "project": None,
+            "pair": None,
             "latest_sleep_report": None,
             "active_rules_count": 0,
             "q_table_version": None,
@@ -120,14 +119,14 @@ async def build_project_snapshot(
         }
 
     sleep_repo = SleepReportRepository(session)
-    # Find the freshest sleep_run for this project (any status) and
+    # Find the freshest sleep_run for this pair (any status) and
     # fetch its report, if one exists. ``SleepReportRepository`` only
     # exposes ``get_by_run_id``, so do the run lookup directly.
     from aether_api.models.sleep_run import SleepRun  # local import (cyclic-avoid)
 
     run_stmt = (
         select(SleepRun.id, SleepRun.ended_at, SleepRun.started_at)
-        .where(SleepRun.project_id == project_id)
+        .where(SleepRun.pair_id == pair_id)
         .order_by(
             SleepRun.ended_at.desc().nulls_last(),
             SleepRun.started_at.desc().nulls_last(),
@@ -156,14 +155,14 @@ async def build_project_snapshot(
 
     sem_repo = SemanticMemoryRepository(session)
     active_rules = await sem_repo.list_active(
-        user_id=user_id, project_id=project_id
+        user_id=user_id, project_id=pair_id
     )
 
     q_repo = QTableRepository(session)
-    latest_q = await q_repo.get_latest(user_id=user_id, project_id=project_id)
+    latest_q = await q_repo.get_latest(user_id=user_id, project_id=pair_id)
 
     return {
-        "project": {
+        "pair": {
             "id": str(proj_row.id),
             "name": proj_row.name,
             "symbol": proj_row.symbol,
@@ -228,8 +227,8 @@ _STATIC_BLOCK_TEXT: str = (
     "generation. Si una observación implica riesgo elevado, dilo "
     "explícitamente.\n"
     "3. Todas las herramientas que tienes a tu disposición operan "
-    "exclusivamente sobre el proyecto del contexto actual. NO intentes "
-    "pasar `user_id`, `project_id` ni `conversation_id` como parámetros "
+    "exclusivamente sobre el par del contexto actual. NO intentes "
+    "pasar `user_id`, `pair_id` ni `conversation_id` como parámetros "
     "— el backend los inyecta y los ignoraría si los enviases.\n"
     "4. Si una herramienta devuelve datos vacíos, dilo claramente al "
     "operador en lugar de inventar valores.\n"
@@ -270,7 +269,7 @@ def build_system_prompt(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
         "cache_control": {"type": "ephemeral"},
     }
     dynamic_text = (
-        "# Snapshot del proyecto (estado dinámico, no cacheado)\n"
+        "# Snapshot del par (estado dinámico, no cacheado)\n"
         + json.dumps(snapshot, ensure_ascii=False, indent=2, default=str)
     )
     dynamic_block: dict[str, Any] = {
@@ -283,6 +282,6 @@ def build_system_prompt(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
 __all__ = [
     "DEFAULT_MAX_TOOL_ROUNDTRIPS",
     "ChatDispatchContext",
-    "build_project_snapshot",
+    "build_pair_snapshot",
     "build_system_prompt",
 ]

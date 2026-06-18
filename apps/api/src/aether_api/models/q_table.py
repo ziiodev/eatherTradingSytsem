@@ -36,9 +36,9 @@ class QTable(Base):
         server_default=text("gen_random_uuid()"),
     )
 
-    project_id: Mapped[uuid.UUID] = mapped_column(
+    pair_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("projects.id", ondelete="CASCADE"),
+        ForeignKey("pairs.id", ondelete="CASCADE"),
         nullable=False,
     )
 
@@ -72,11 +72,11 @@ class QTable(Base):
     )
 
     # --- Relations
-    project = relationship("Project", lazy="raise")
+    pair = relationship("Pair", lazy="raise")
     sleep_run = relationship("SleepRun", lazy="raise")
 
     __table_args__ = (
-        UniqueConstraint("project_id", "version", name="uq_q_tables_project_version"),
+        UniqueConstraint("pair_id", "version", name="uq_q_tables_pair_version"),
         CheckConstraint("version >= 1", name="q_tables_version_positive"),
         CheckConstraint(
             "alpha_normal >= 0 AND alpha_normal <= 1 AND alpha_special >= 0 AND alpha_special <= 1",
@@ -91,6 +91,6 @@ class QTable(Base):
 
     def __repr__(self) -> str:  # pragma: no cover
         return (
-            f"<QTable id={self.id} project_id={self.project_id} "
+            f"<QTable id={self.id} pair_id={self.pair_id} "
             f"version={self.version} episodes={self.episode_count}>"
         )

@@ -22,7 +22,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import JSONB
 
 from aether_api.models.episodic_memory import EpisodicMemory
-from aether_api.models.project import Project
+from aether_api.models.pair import Pair
 from aether_api.repositories.base import BaseRepository
 
 
@@ -35,8 +35,8 @@ class EpisodicMemoryRepository(BaseRepository):
     async def _user_owns_project(
         self, user_id: uuid.UUID, project_id: uuid.UUID
     ) -> bool:
-        stmt = select(Project.id).where(
-            Project.id == project_id, Project.user_id == user_id
+        stmt = select(Pair.id).where(
+            Pair.id == project_id, Pair.user_id == user_id
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none() is not None
@@ -94,7 +94,7 @@ class EpisodicMemoryRepository(BaseRepository):
             meta["q_value_after"] = str(Decimal(str(q_value_after)))
 
         row = EpisodicMemory(
-            project_id=project_id,
+            pair_id=project_id,
             state_key=state_key,
             action=action,
             reward=Decimal(str(reward)),
@@ -126,7 +126,7 @@ class EpisodicMemoryRepository(BaseRepository):
                 count_stmt = (
                     select(func.count())
                     .select_from(EpisodicMemory)
-                    .where(EpisodicMemory.project_id == project_id)
+                    .where(EpisodicMemory.pair_id == project_id)
                 )
                 row_count = int(
                     (await self.session.execute(count_stmt)).scalar_one()
@@ -160,9 +160,9 @@ class EpisodicMemoryRepository(BaseRepository):
         """Return episodes for ``project_id`` within the time window."""
         stmt = (
             select(EpisodicMemory)
-            .join(Project, Project.id == EpisodicMemory.project_id)
-            .where(Project.user_id == user_id)
-            .where(EpisodicMemory.project_id == project_id)
+            .join(Pair, Pair.id == EpisodicMemory.pair_id)
+            .where(Pair.user_id == user_id)
+            .where(EpisodicMemory.pair_id == project_id)
         )
         if since is not None:
             stmt = stmt.where(EpisodicMemory.created_at >= since)
@@ -227,7 +227,7 @@ class EpisodicMemoryRepository(BaseRepository):
         stmt = (
             update(EpisodicMemory)
             .where(EpisodicMemory.id.in_(episode_ids))
-            .where(EpisodicMemory.project_id == project_id)
+            .where(EpisodicMemory.pair_id == project_id)
             .values(
                 meta_data=EpisodicMemory.meta_data.op("||")(
                     func.jsonb_build_object("is_special", True).cast(JSONB)
@@ -254,9 +254,9 @@ class EpisodicMemoryRepository(BaseRepository):
         """
         stmt = (
             select(EpisodicMemory.state_key, func.count().label("freq"))
-            .join(Project, Project.id == EpisodicMemory.project_id)
-            .where(Project.user_id == user_id)
-            .where(EpisodicMemory.project_id == project_id)
+            .join(Pair, Pair.id == EpisodicMemory.pair_id)
+            .where(Pair.user_id == user_id)
+            .where(EpisodicMemory.pair_id == project_id)
             .group_by(EpisodicMemory.state_key)
             .order_by(func.count().desc(), EpisodicMemory.state_key.asc())
             .limit(k)

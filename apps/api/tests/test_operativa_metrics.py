@@ -51,7 +51,7 @@ def test_set_ws_subscribers_writes_gauge_sample() -> None:
     set_ws_subscribers(project_id, 3)
 
     value = operativa_ws_subscribers.labels(
-        project=str(project_id)
+        pair=str(project_id)
     )._value.get()  # type: ignore[attr-defined]
     assert value == 3.0
 
@@ -59,7 +59,7 @@ def test_set_ws_subscribers_writes_gauge_sample() -> None:
 def test_set_ws_subscribers_accepts_string_label() -> None:
     """``project_id`` may be a string — Prometheus labels are strings."""
     set_ws_subscribers("custom-key", 7)
-    value = operativa_ws_subscribers.labels(project="custom-key")._value.get()  # type: ignore[attr-defined]
+    value = operativa_ws_subscribers.labels(pair="custom-key")._value.get()  # type: ignore[attr-defined]
     assert value == 7.0
 
 
@@ -67,7 +67,7 @@ def test_set_mcp_status_maps_available_true_to_one() -> None:
     project_id = uuid.uuid4()
     set_mcp_status(project_id, available=True)
     value = operativa_mcp_status.labels(
-        project=str(project_id)
+        pair=str(project_id)
     )._value.get()  # type: ignore[attr-defined]
     assert value == 1.0
 
@@ -76,7 +76,7 @@ def test_set_mcp_status_maps_available_false_to_zero() -> None:
     project_id = uuid.uuid4()
     set_mcp_status(project_id, available=False)
     value = operativa_mcp_status.labels(
-        project=str(project_id)
+        pair=str(project_id)
     )._value.get()  # type: ignore[attr-defined]
     assert value == 0.0
 
@@ -90,11 +90,11 @@ def test_reset_for_test_clears_both_gauges() -> None:
 
     # After clear, accessing the label re-initialises it to 0.0.
     assert (
-        operativa_ws_subscribers.labels(project=str(project_id))._value.get()  # type: ignore[attr-defined]
+        operativa_ws_subscribers.labels(pair=str(project_id))._value.get()  # type: ignore[attr-defined]
         == 0.0
     )
     assert (
-        operativa_mcp_status.labels(project=str(project_id))._value.get()  # type: ignore[attr-defined]
+        operativa_mcp_status.labels(pair=str(project_id))._value.get()  # type: ignore[attr-defined]
         == 0.0
     )
 
@@ -179,16 +179,16 @@ async def test_live_bus_subscribe_increments_subscriber_gauge(
 
     # Before any subscriber the label sample is the gauge default (0).
     assert (
-        operativa_ws_subscribers.labels(project=str(project_id))._value.get()  # type: ignore[attr-defined]
+        operativa_ws_subscribers.labels(pair=str(project_id))._value.get()  # type: ignore[attr-defined]
         == 0.0
     )
 
     sub = await bus.subscribe(
-        project_id=project_id, user_id=owner_id, conn_handle=object()
+        pair_id=project_id, user_id=owner_id, conn_handle=object()
     )
     try:
         assert (
-            operativa_ws_subscribers.labels(project=str(project_id))._value.get()  # type: ignore[attr-defined]
+            operativa_ws_subscribers.labels(pair=str(project_id))._value.get()  # type: ignore[attr-defined]
             == 1.0
         )
     finally:
@@ -196,7 +196,7 @@ async def test_live_bus_subscribe_increments_subscriber_gauge(
 
     # Unsubscribe drops the gauge back to zero.
     assert (
-        operativa_ws_subscribers.labels(project=str(project_id))._value.get()  # type: ignore[attr-defined]
+        operativa_ws_subscribers.labels(pair=str(project_id))._value.get()  # type: ignore[attr-defined]
         == 0.0
     )
 
@@ -222,7 +222,7 @@ async def test_live_bus_mcp_outage_flips_status_gauge_to_zero(
         heartbeat_seconds=10.0,
     )
     sub = await bus.subscribe(
-        project_id=project_id, user_id=owner_id, conn_handle=object()
+        pair_id=project_id, user_id=owner_id, conn_handle=object()
     )
     try:
         # The polling loop should emit an mcp_status=false event very
@@ -230,10 +230,10 @@ async def test_live_bus_mcp_outage_flips_status_gauge_to_zero(
         deadline = asyncio.get_event_loop().time() + 2.0
         while asyncio.get_event_loop().time() < deadline:
             value = operativa_mcp_status.labels(
-                project=str(project_id)
+                pair=str(project_id)
             )._value.get()  # type: ignore[attr-defined]
             if value == 0.0 and len(
-                operativa_mcp_status.labels(project=str(project_id))._labelvalues  # type: ignore[attr-defined]
+                operativa_mcp_status.labels(pair=str(project_id))._labelvalues  # type: ignore[attr-defined]
             ) > 0:
                 # Make sure the gauge was ACTUALLY written, not just
                 # the default. _Value._value carries the last set value;
@@ -242,7 +242,7 @@ async def test_live_bus_mcp_outage_flips_status_gauge_to_zero(
                 break
             await asyncio.sleep(0.05)
         final = operativa_mcp_status.labels(
-            project=str(project_id)
+            pair=str(project_id)
         )._value.get()  # type: ignore[attr-defined]
         assert final == 0.0
     finally:

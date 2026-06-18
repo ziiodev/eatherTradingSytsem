@@ -1,8 +1,8 @@
 import { Badge } from "@/components/ui/badge";
-import { PROJECT_STATUS_LABEL, type ProjectStatus } from "@/lib/projects";
+import { PAIR_STATUS_LABEL, type PairStatus } from "@/lib/pairs";
 
 const STATUS_VARIANT: Record<
-  ProjectStatus,
+  PairStatus,
   "success" | "warning" | "danger" | "muted" | "accent"
 > = {
   active: "success",
@@ -14,7 +14,7 @@ const STATUS_VARIANT: Record<
 };
 
 export interface StatusBadgeProps {
-  status: ProjectStatus;
+  status: PairStatus;
   className?: string;
 }
 
@@ -28,7 +28,7 @@ export function StatusBadge({
 }: StatusBadgeProps): React.JSX.Element {
   return (
     <Badge variant={STATUS_VARIANT[status]} className={className}>
-      {PROJECT_STATUS_LABEL[status]}
+      {PAIR_STATUS_LABEL[status]}
     </Badge>
   );
 }

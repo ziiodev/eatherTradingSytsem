@@ -683,7 +683,7 @@ def build_default_handlers(
                     raise RpcError(f"invalid ticket: {ticket!r}") from exc
 
                 stmt = _select(_OrderModel).where(
-                    _OrderModel.project_id == project_id,
+                    _OrderModel.pair_id == project_id,
                     _OrderModel.user_id == user_id,
                     _OrderModel.mt5_ticket == ticket_int,
                 )
@@ -748,7 +748,7 @@ def build_default_handlers(
                     raise RpcError(f"invalid ticket: {ticket!r}") from exc
 
                 stmt = _select(_OrderModel).where(
-                    _OrderModel.project_id == project_id,
+                    _OrderModel.pair_id == project_id,
                     _OrderModel.user_id == user_id,
                     _OrderModel.mt5_ticket == ticket_int,
                 )

@@ -2,7 +2,7 @@
  * Frontend domain types + API helpers for the live MT5 (operativa) surface.
  *
  * Mirrors the routes added in
- * ``apps/api/src/aether_api/routers/projects_live.py``. Until the OpenAPI
+ * ``apps/api/src/aether_api/routers/pairs_live.py``. Until the OpenAPI
  * dump regenerates ``@aether/shared-types`` we keep a local copy of the
  * contract here so the dashboard compiles without a network round-trip.
  *
@@ -56,7 +56,7 @@ export const PositionsResponseSchema = z.object({
 
 export const OrderSchema = z.object({
   id: z.string().uuid(),
-  project_id: z.string().uuid(),
+  pair_id: z.string().uuid(),
   agent_id: z.string().uuid().nullable().optional(),
   symbol: z.string(),
   side: z.enum(["buy", "sell"]),
@@ -105,7 +105,7 @@ export const ApprovalsListSchema = z.object({
 export type Approval = z.infer<typeof ApprovalSchema>;
 
 // ---------------------------------------------------------------------------
-// Operativa surface — schemas mirroring projects_live.py operativa endpoints.
+// Operativa surface — schemas mirroring pairs_live.py operativa endpoints.
 // ---------------------------------------------------------------------------
 
 /**
@@ -125,7 +125,7 @@ export type NumberOrInfinity = z.infer<typeof NumberOrInfinitySchema>;
 /** Coerces Decimal-as-string from FastAPI into a JS number, allowing null. */
 const nullableNumber = z.union([z.coerce.number(), z.null()]).nullable();
 
-/** GET /api/projects/{id}/operativa/account-summary */
+/** GET /api/pairs/{id}/operativa/account-summary */
 export const accountSummarySchema = z.object({
   equity: nullableNumber.optional().default(null),
   balance: nullableNumber.optional().default(null),
@@ -153,7 +153,7 @@ export type OperativaMetrics = z.infer<typeof metricsSchema>;
 /** Extended order row exposed by the operativa endpoint. */
 export const operativaOrderSchema = z.object({
   id: z.string().uuid(),
-  project_id: z.string().uuid(),
+  pair_id: z.string().uuid(),
   agent_id: z.string().uuid().nullable().optional(),
   symbol: z.string(),
   side: z.enum(["buy", "sell"]),
@@ -178,7 +178,7 @@ export const operativaOrderSchema = z.object({
 });
 export type OperativaOrderRecord = z.infer<typeof operativaOrderSchema>;
 
-/** GET /api/projects/{id}/operativa/orders */
+/** GET /api/pairs/{id}/operativa/orders */
 export const ordersListResponseSchema = z.object({
   items: z.array(operativaOrderSchema),
   total: z.number().int(),
@@ -250,29 +250,29 @@ export type WsEvent = z.infer<typeof wsEventSchema>;
 // API helpers
 // ---------------------------------------------------------------------------
 
-export async function getAccount(projectId: string): Promise<Account> {
-  const raw = await apiGet(`/api/projects/${projectId}/account`);
+export async function getAccount(pairId: string): Promise<Account> {
+  const raw = await apiGet(`/api/pairs/${pairId}/account`);
   return AccountSchema.parse(raw);
 }
 
-export async function getPositions(projectId: string): Promise<Position[]> {
-  const raw = await apiGet(`/api/projects/${projectId}/positions`);
+export async function getPositions(pairId: string): Promise<Position[]> {
+  const raw = await apiGet(`/api/pairs/${pairId}/positions`);
   return PositionsResponseSchema.parse(raw).positions;
 }
 
 export async function listOrders(
-  projectId: string,
+  pairId: string,
   { limit = 50, offset = 0 }: { limit?: number; offset?: number } = {},
 ): Promise<{ items: OrderRecord[]; total: number }> {
   const raw = await apiGet(
-    `/api/projects/${projectId}/orders?limit=${limit}&offset=${offset}`,
+    `/api/pairs/${pairId}/orders?limit=${limit}&offset=${offset}`,
   );
   const parsed = OrdersListSchema.parse(raw);
   return { items: parsed.items, total: parsed.total };
 }
 
 export async function getHistory(
-  projectId: string,
+  pairId: string,
   params: { date_from: string; date_to: string; symbol?: string },
 ): Promise<z.infer<typeof DealSchema>[]> {
   const qs = new URLSearchParams({
@@ -280,31 +280,31 @@ export async function getHistory(
     date_to: params.date_to,
   });
   if (params.symbol) qs.set("symbol", params.symbol);
-  const raw = await apiGet(`/api/projects/${projectId}/history?${qs}`);
+  const raw = await apiGet(`/api/pairs/${pairId}/history?${qs}`);
   return HistoryResponseSchema.parse(raw).deals;
 }
 
-export async function listApprovals(projectId: string): Promise<Approval[]> {
-  const raw = await apiGet(`/api/projects/${projectId}/approvals`);
+export async function listApprovals(pairId: string): Promise<Approval[]> {
+  const raw = await apiGet(`/api/pairs/${pairId}/approvals`);
   return ApprovalsListSchema.parse(raw).items;
 }
 
 export async function approveApproval(
-  projectId: string,
+  pairId: string,
   approvalId: string,
 ): Promise<{ id: string; status: string }> {
   return (await apiPost(
-    `/api/projects/${projectId}/approvals/${approvalId}/approve`,
+    `/api/pairs/${pairId}/approvals/${approvalId}/approve`,
     {},
   )) as { id: string; status: string };
 }
 
 export async function rejectApproval(
-  projectId: string,
+  pairId: string,
   approvalId: string,
 ): Promise<{ id: string; status: string }> {
   return (await apiPost(
-    `/api/projects/${projectId}/approvals/${approvalId}/reject`,
+    `/api/pairs/${pairId}/approvals/${approvalId}/reject`,
     {},
   )) as { id: string; status: string };
 }
@@ -313,12 +313,12 @@ export async function rejectApproval(
 // Operativa fetchers (Phase 5.1)
 // ---------------------------------------------------------------------------
 
-/** GET /api/projects/{id}/operativa/account-summary */
+/** GET /api/pairs/{id}/operativa/account-summary */
 export async function fetchAccountSummary(
-  projectId: string,
+  pairId: string,
 ): Promise<AccountSummary> {
   const raw = await apiGet(
-    `/api/projects/${projectId}/operativa/account-summary`,
+    `/api/pairs/${pairId}/operativa/account-summary`,
   );
   return accountSummarySchema.parse(raw);
 }
@@ -338,12 +338,12 @@ export interface FetchOrdersOptions {
 }
 
 /**
- * GET /api/projects/{id}/operativa/orders with the seven supported filters
+ * GET /api/pairs/{id}/operativa/orders with the seven supported filters
  * plus pagination. ``from`` is the canonical query string parameter — the
  * backend reads it via the ``alias="from"`` Pydantic field.
  */
 export async function fetchOrders(
-  projectId: string,
+  pairId: string,
   opts: FetchOrdersOptions = {},
 ): Promise<OrdersListResponse> {
   const qs = new URLSearchParams();
@@ -359,7 +359,7 @@ export async function fetchOrders(
 
   const query = qs.toString();
   const path =
-    `/api/projects/${projectId}/operativa/orders` +
+    `/api/pairs/${pairId}/operativa/orders` +
     (query ? `?${query}` : "");
   const raw = await apiGet(path);
   return ordersListResponseSchema.parse(raw);

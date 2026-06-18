@@ -16,7 +16,7 @@ import pytest
 from aether_api.docker_control import client as docker_client
 from aether_api.docker_control import reconcile
 from aether_api.models.container_event import ContainerEvent
-from aether_api.models.project import Project
+from aether_api.models.pair import Pair
 from sqlalchemy import select
 
 pytestmark = pytest.mark.integration
@@ -89,13 +89,13 @@ async def _seed_project_with_container(
         return project.id
 
 
-async def _project_row(project_id: uuid.UUID) -> Project:
+async def _project_row(project_id: uuid.UUID) -> Pair:
     from aether_api.db.session import get_session_maker
 
     maker = get_session_maker()
     async with maker() as session:
         result = await session.execute(
-            select(Project).where(Project.id == project_id)
+            select(Pair).where(Pair.id == project_id)
         )
         return result.scalar_one()
 
@@ -106,7 +106,7 @@ async def _events_for(project_id: uuid.UUID) -> list[ContainerEvent]:
     maker = get_session_maker()
     async with maker() as session:
         result = await session.execute(
-            select(ContainerEvent).where(ContainerEvent.project_id == project_id)
+            select(ContainerEvent).where(ContainerEvent.pair_id == project_id)
         )
         return list(result.scalars().all())
 

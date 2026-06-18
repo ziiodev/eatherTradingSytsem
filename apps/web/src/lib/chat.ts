@@ -47,7 +47,7 @@ export const CHAT_MODEL_LABEL: Record<ChatModel, string> = {
 
 export const conversationSchema = z.object({
   id: z.string().uuid(),
-  project_id: z.string().uuid(),
+  pair_id: z.string().uuid(),
   title: z.string(),
   created_at: z.string().nullable().optional(),
   updated_at: z.string().nullable().optional(),
@@ -161,7 +161,7 @@ export interface ListConversationsParams {
 }
 
 function buildConvListPath(
-  projectId: string,
+  pairId: string,
   params: ListConversationsParams,
 ): string {
   const sp = new URLSearchParams();
@@ -170,15 +170,15 @@ function buildConvListPath(
   if (params.offset !== undefined) sp.set("offset", String(params.offset));
   const qs = sp.toString();
   return qs
-    ? `/api/projects/${projectId}/chat/conversations?${qs}`
-    : `/api/projects/${projectId}/chat/conversations`;
+    ? `/api/pairs/${pairId}/chat/conversations?${qs}`
+    : `/api/pairs/${pairId}/chat/conversations`;
 }
 
 export async function listConversations(
-  projectId: string,
+  pairId: string,
   params: ListConversationsParams = {},
 ): Promise<ConversationListResponse> {
-  const data = await apiGet<unknown>(buildConvListPath(projectId, params));
+  const data = await apiGet<unknown>(buildConvListPath(pairId, params));
   return conversationListResponseSchema.parse(data);
 }
 
@@ -188,11 +188,11 @@ export interface CreateConversationBody {
 }
 
 export async function createConversation(
-  projectId: string,
+  pairId: string,
   body: CreateConversationBody = {},
 ): Promise<ChatConversation> {
   const data = await apiPost<unknown>(
-    `/api/projects/${projectId}/chat/conversations`,
+    `/api/pairs/${pairId}/chat/conversations`,
     body,
   );
   return conversationSchema.parse(data);
@@ -204,7 +204,7 @@ export interface ConversationDetail {
 }
 
 export async function getConversation(
-  projectId: string,
+  pairId: string,
   conversationId: string,
   options: { last?: number } = {},
 ): Promise<ConversationDetail> {
@@ -212,8 +212,8 @@ export async function getConversation(
   if (options.last !== undefined) sp.set("last", String(options.last));
   const qs = sp.toString();
   const path = qs
-    ? `/api/projects/${projectId}/chat/conversations/${conversationId}?${qs}`
-    : `/api/projects/${projectId}/chat/conversations/${conversationId}`;
+    ? `/api/pairs/${pairId}/chat/conversations/${conversationId}?${qs}`
+    : `/api/pairs/${pairId}/chat/conversations/${conversationId}`;
   const raw = (await apiGet<{
     conversation: unknown;
     messages: unknown[];
@@ -234,19 +234,19 @@ export interface PatchConversationBody {
 }
 
 export async function patchConversation(
-  projectId: string,
+  pairId: string,
   conversationId: string,
   body: PatchConversationBody,
 ): Promise<ChatConversation> {
   const data = await apiPatch<unknown>(
-    `/api/projects/${projectId}/chat/conversations/${conversationId}`,
+    `/api/pairs/${pairId}/chat/conversations/${conversationId}`,
     body,
   );
   return conversationSchema.parse(data);
 }
 
 export async function listMessages(
-  projectId: string,
+  pairId: string,
   conversationId: string,
   params: { limit?: number; offset?: number } = {},
 ): Promise<MessageListResponse> {
@@ -255,8 +255,8 @@ export async function listMessages(
   if (params.offset !== undefined) sp.set("offset", String(params.offset));
   const qs = sp.toString();
   const path = qs
-    ? `/api/projects/${projectId}/chat/conversations/${conversationId}/messages?${qs}`
-    : `/api/projects/${projectId}/chat/conversations/${conversationId}/messages`;
+    ? `/api/pairs/${pairId}/chat/conversations/${conversationId}/messages?${qs}`
+    : `/api/pairs/${pairId}/chat/conversations/${conversationId}/messages`;
   const data = await apiGet<unknown>(path);
   return messageListResponseSchema.parse(data);
 }
@@ -336,12 +336,12 @@ export function parseSseFrame(raw: string): SseEvent | null {
  * surface as :class:`ChatPostError` with the structured backend body.
  */
 export async function postMessage(
-  projectId: string,
+  pairId: string,
   conversationId: string,
   content: string,
   options: PostMessageOptions,
 ): Promise<void> {
-  const url = `/api/projects/${projectId}/chat/conversations/${conversationId}/messages`;
+  const url = `/api/pairs/${pairId}/chat/conversations/${conversationId}/messages`;
   const baseInit: RequestInit = {
     method: "POST",
     credentials: "include",

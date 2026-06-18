@@ -24,7 +24,7 @@ from datetime import date, datetime, time
 from typing import Literal
 
 #: The 5 named sessions from the charter (and the DB CHECK constraint
-#: on :data:`aether_api.models.project.TRADING_SESSIONS`).
+#: on :data:`aether_api.models.pair.TRADING_SESSIONS`).
 SessionName = Literal["sydney", "shanghai", "tokyo", "europe", "new_york"]
 SESSION_NAMES: tuple[SessionName, ...] = (
     "sydney",

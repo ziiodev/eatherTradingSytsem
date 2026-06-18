@@ -203,8 +203,8 @@ export function apiDelete<T>(path: string, init?: RequestInit): Promise<T> {
 // from the generated OpenAPI `paths` map.
 //
 // Usage:
-//   type Projects = ApiResponse<"/api/projects", "get">;
-//   const data = await apiGet<Projects>("/api/projects");
+//   type Pairs = ApiResponse<"/api/pairs", "get">;
+//   const data = await apiGet<Pairs>("/api/pairs");
 //
 // Until the real OpenAPI schema is regenerated (see
 // `packages/shared-types/README.md` and the `make gen.types` target),

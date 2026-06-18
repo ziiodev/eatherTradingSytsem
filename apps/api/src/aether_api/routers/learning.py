@@ -1,4 +1,4 @@
-"""``/api/projects/{id}/q-tables`` + ``episodic-memory`` + ``semantic-memory``.
+"""``/api/pairs/{id}/q-tables`` + ``episodic-memory`` + ``semantic-memory``.
 
 Read-only surface for the four sleep-learning-loop tables. Writes
 happen exclusively through the Sleep Phase orchestrator and the
@@ -6,11 +6,11 @@ Worker ctx proxies — NEVER through HTTP.
 
 Endpoints (all GET, all auth-gated):
 
-* ``GET /api/projects/{project_id}/q-tables``                  — list versions (paginated).
-* ``GET /api/projects/{project_id}/q-tables/{version}``        — single Q-Table version.
-* ``GET /api/projects/{project_id}/episodic-memory``           — paginated episodes
+* ``GET /api/pairs/{pair_id}/q-tables``                  — list versions (paginated).
+* ``GET /api/pairs/{pair_id}/q-tables/{version}``        — single Q-Table version.
+* ``GET /api/pairs/{pair_id}/episodic-memory``           — paginated episodes
                                                                   (since/until/state_key).
-* ``GET /api/projects/{project_id}/semantic-memory``           — active rules
+* ``GET /api/pairs/{pair_id}/semantic-memory``           — active rules
                                                                   (rule_type filter).
 
 Invariants enforced here (every endpoint):
@@ -40,14 +40,14 @@ from aether_api.models.user import User
 from aether_api.repositories.episodic_memory_repository import (
     EpisodicMemoryRepository,
 )
-from aether_api.repositories.project_repository import ProjectRepository
+from aether_api.repositories.pair_repository import PairRepository
 from aether_api.repositories.q_table_repository import QTableRepository
 from aether_api.repositories.semantic_memory_repository import (
     SemanticMemoryRepository,
 )
 from aether_api.tenancy.middleware import current_user
 
-router = APIRouter(prefix="/api/projects", tags=["learning"])
+router = APIRouter(prefix="/api/pairs", tags=["learning"])
 
 
 # ---------------------------------------------------------------------------
@@ -59,7 +59,7 @@ class QTableResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    project_id: uuid.UUID
+    pair_id: uuid.UUID
     version: int
     table_data: dict[str, Any] = Field(default_factory=dict)
     alpha_normal: Decimal
@@ -76,7 +76,7 @@ class QTableListItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    project_id: uuid.UUID
+    pair_id: uuid.UUID
     version: int
     alpha_normal: Decimal
     alpha_special: Decimal
@@ -102,7 +102,7 @@ class EpisodicMemoryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    project_id: uuid.UUID
+    pair_id: uuid.UUID
     state_key: str
     action: str
     reward: Decimal
@@ -129,7 +129,7 @@ class SemanticMemoryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    project_id: uuid.UUID
+    pair_id: uuid.UUID
     rule_type: str
     body: str
     payload: dict[str, Any] = Field(default_factory=dict)
@@ -150,20 +150,20 @@ class SemanticMemoryListResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-async def _assert_owns_project(
-    session: AsyncSession, user: User, project_id: uuid.UUID
+async def _assert_owns_pair(
+    session: AsyncSession, user: User, pair_id: uuid.UUID
 ) -> None:
-    """Raise 404 if ``project_id`` is not owned by ``user``.
+    """Raise 404 if ``pair_id`` is not owned by ``user``.
 
     Existence non-disclosure: a 403 here would confirm the row exists for
     another tenant. Per ``multi-tenancy-delta`` (#2068) every cross-tenant
     learning read MUST resolve to 404.
     """
-    repo = ProjectRepository(session)
-    project = await repo.get_for_user(user.id, project_id)
-    if project is None:
+    repo = PairRepository(session)
+    pair = await repo.get_for_user(user.id, pair_id)
+    if pair is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="project not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="pair not found"
         )
 
 
@@ -202,36 +202,36 @@ def _resolve_episodic_window(
 # Q-Tables
 # ---------------------------------------------------------------------------
 @router.get(
-    "/{project_id}/q-tables",
+    "/{pair_id}/q-tables",
     response_model=QTableListResponse,
 )
 async def list_q_tables(
-    project_id: uuid.UUID,
+    pair_id: uuid.UUID,
     user: Annotated[User, Depends(current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0, le=10_000)] = 0,
 ) -> QTableListResponse:
-    """List Q-Table versions for ``project_id`` (newest version first).
+    """List Q-Table versions for ``pair_id`` (newest version first).
 
-    404 if the project does not belong to the caller (existence
+    404 if the pair does not belong to the caller (existence
     non-disclosure). Cross-tenant calls never see a 403.
 
-    ``total`` reflects ALL versions for the project (not the page size).
+    ``total`` reflects ALL versions for the pair (not the page size).
     """
-    await _assert_owns_project(session, user, project_id)
+    await _assert_owns_pair(session, user, pair_id)
 
     q_repo = QTableRepository(session)
     rows = await q_repo.list_versions(
         user_id=user.id,
-        project_id=project_id,
+        project_id=pair_id,
         limit=limit,
         offset=offset,
     )
     # Count: cheapest correct path is to ask for the highest-version row
     # and reuse its ``version`` field — versions are dense, starting at 1.
-    # If the project has zero versions, ``latest`` is None → total 0.
-    latest = await q_repo.get_latest(user_id=user.id, project_id=project_id)
+    # If the pair has zero versions, ``latest`` is None → total 0.
+    latest = await q_repo.get_latest(user_id=user.id, project_id=pair_id)
     total = int(latest.version) if latest is not None else 0
     return QTableListResponse(
         items=[QTableListItem.model_validate(r) for r in rows],
@@ -240,18 +240,18 @@ async def list_q_tables(
 
 
 @router.get(
-    "/{project_id}/q-tables/{version}",
+    "/{pair_id}/q-tables/{version}",
     response_model=QTableResponse,
 )
 async def get_q_table_version(
-    project_id: uuid.UUID,
+    pair_id: uuid.UUID,
     version: int,
     user: Annotated[User, Depends(current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> QTableResponse:
     """Return a single Q-Table version (full ``table_data`` JSONB included).
 
-    404 if the version does not exist OR the project is cross-tenant —
+    404 if the version does not exist OR the pair is cross-tenant —
     we don't differentiate, by design.
     """
     if version < 1:
@@ -262,7 +262,7 @@ async def get_q_table_version(
     q_repo = QTableRepository(session)
     row = await q_repo.get_version(
         user_id=user.id,
-        project_id=project_id,
+        project_id=pair_id,
         version=version,
     )
     if row is None:
@@ -276,11 +276,11 @@ async def get_q_table_version(
 # Episodic memory
 # ---------------------------------------------------------------------------
 @router.get(
-    "/{project_id}/episodic-memory",
+    "/{pair_id}/episodic-memory",
     response_model=EpisodicMemoryListResponse,
 )
 async def list_episodic_memory(
-    project_id: uuid.UUID,
+    pair_id: uuid.UUID,
     user: Annotated[User, Depends(current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
     since: Annotated[datetime | None, Query()] = None,
@@ -289,7 +289,7 @@ async def list_episodic_memory(
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: Annotated[int, Query(ge=0, le=100_000)] = 0,
 ) -> EpisodicMemoryListResponse:
-    """Return episodes for ``project_id`` filtered by time window + state_key.
+    """Return episodes for ``pair_id`` filtered by time window + state_key.
 
     Defaults:
       * ``since`` = ``now - 7 days``
@@ -298,14 +298,14 @@ async def list_episodic_memory(
     404 on cross-tenant. ``total`` reflects the page length (we don't
     issue a second COUNT query — pagination is offset/limit anyway).
     """
-    await _assert_owns_project(session, user, project_id)
+    await _assert_owns_pair(session, user, pair_id)
 
     since_naive, until_naive = _resolve_episodic_window(since, until)
 
     ep_repo = EpisodicMemoryRepository(session)
     rows = await ep_repo.list_by_project(
         user_id=user.id,
-        project_id=project_id,
+        project_id=pair_id,
         since=since_naive,
         until=until_naive,
         state_key=state_key,
@@ -322,17 +322,17 @@ async def list_episodic_memory(
 # Semantic memory
 # ---------------------------------------------------------------------------
 @router.get(
-    "/{project_id}/semantic-memory",
+    "/{pair_id}/semantic-memory",
     response_model=SemanticMemoryListResponse,
 )
 async def list_semantic_memory(
-    project_id: uuid.UUID,
+    pair_id: uuid.UUID,
     user: Annotated[User, Depends(current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
     rule_type: Annotated[str | None, Query(max_length=40)] = None,
     active: Annotated[bool, Query()] = True,
 ) -> SemanticMemoryListResponse:
-    """Return semantic rules for ``project_id``.
+    """Return semantic rules for ``pair_id``.
 
     ``active`` defaults to True. The repository surface (``list_active``)
     only exposes active rows — passing ``active=false`` returns an empty
@@ -341,7 +341,7 @@ async def list_semantic_memory(
 
     404 on cross-tenant.
     """
-    await _assert_owns_project(session, user, project_id)
+    await _assert_owns_pair(session, user, pair_id)
 
     # ``active`` query arg accepted for forward-compat with a future history
     # endpoint; we only serve active rules in Phase 9 to keep the repo
@@ -352,7 +352,7 @@ async def list_semantic_memory(
     sm_repo = SemanticMemoryRepository(session)
     rows = await sm_repo.list_active(
         user_id=user.id,
-        project_id=project_id,
+        project_id=pair_id,
         rule_type=rule_type,
     )
     return SemanticMemoryListResponse(

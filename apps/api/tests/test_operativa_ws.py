@@ -134,13 +134,13 @@ async def test_live_bus_subscriber_lifecycle_starts_and_cancels_task(migrated_db
     assert bus.subscriber_count(project_id) == 0
     assert not bus.has_task(project_id)
 
-    sub = await bus.subscribe(project_id=project_id, user_id=owner_id, conn_handle=object())
+    sub = await bus.subscribe(pair_id=project_id, user_id=owner_id, conn_handle=object())
     assert bus.subscriber_count(project_id) == 1
     assert bus.has_task(project_id)
 
     # New asyncio task should exist for this project.
     extra_tasks = {t for t in asyncio.all_tasks() if not t.done()} - baseline_tasks
-    assert any(t.get_name().startswith("live-bus-project-") for t in extra_tasks)
+    assert any(t.get_name().startswith("live-bus-pair-") for t in extra_tasks)
 
     await bus.unsubscribe(sub)
     assert bus.subscriber_count(project_id) == 0
@@ -150,7 +150,7 @@ async def test_live_bus_subscriber_lifecycle_starts_and_cancels_task(migrated_db
     await asyncio.sleep(0)
     final_tasks = {t for t in asyncio.all_tasks() if not t.done()}
     project_loop_tasks = {
-        t for t in final_tasks if t.get_name().startswith("live-bus-project-")
+        t for t in final_tasks if t.get_name().startswith("live-bus-pair-")
     }
     assert project_loop_tasks == set()
 
@@ -174,7 +174,7 @@ async def test_live_bus_queue_overflow_drops_oldest(migrated_db: str) -> None:
         heartbeat_seconds=10.0,
     )
     sub = await bus.subscribe(
-        project_id=project_id, user_id=owner_id, conn_handle=object()
+        pair_id=project_id, user_id=owner_id, conn_handle=object()
     )
     try:
         # Pump (maxsize + 5) events through the broadcaster.
@@ -213,7 +213,7 @@ async def test_live_bus_mcp_outage_emits_status_event(migrated_db: str) -> None:
         heartbeat_seconds=10.0,
     )
     sub = await bus.subscribe(
-        project_id=project_id, user_id=owner_id, conn_handle=object()
+        pair_id=project_id, user_id=owner_id, conn_handle=object()
     )
     try:
         # Wait up to 2s for an mcp_status=false event.
@@ -266,7 +266,7 @@ async def test_reconciler_does_not_overwrite_worker_authored_fields(
     ticket_int = 7777777
     async with maker() as session:
         order = Order(
-            project_id=project_id,
+            pair_id=project_id,
             user_id=owner_id,
             symbol="EURUSD",
             side="buy",
@@ -311,7 +311,7 @@ async def test_reconciler_does_not_overwrite_worker_authored_fields(
         touched = await reconcile_history(
             session=session,
             user_id=owner_id,
-            project_id=project_id,
+            pair_id=project_id,
             deals=broker_deals,
         )
         await session.commit()
@@ -398,7 +398,7 @@ async def test_reconciler_creates_row_for_unknown_ticket(migrated_db: str) -> No
         touched = await reconcile_history(
             session=session,
             user_id=owner_id,
-            project_id=project_id,
+            pair_id=project_id,
             deals=deals,
         )
         await session.commit()
@@ -406,7 +406,7 @@ async def test_reconciler_creates_row_for_unknown_ticket(migrated_db: str) -> No
 
     async with maker() as session:
         stmt = select(Order).where(
-            Order.project_id == project_id, Order.mt5_ticket == ticket_int
+            Order.pair_id == project_id, Order.mt5_ticket == ticket_int
         )
         order = (await session.execute(stmt)).scalar_one_or_none()
         assert order is not None
@@ -469,7 +469,7 @@ async def test_ws_no_cookie_closes_with_1008(migrated_db: str) -> None:
         with (
             TestClient(app, client=("127.0.0.1", 50000)) as client,
             pytest.raises(WebSocketDisconnect) as exc_info,
-            client.websocket_connect(f"/api/projects/{project_id}/operativa/ws"),
+            client.websocket_connect(f"/api/pairs/{project_id}/operativa/ws"),
         ):
             pass
 
@@ -531,7 +531,7 @@ async def test_ws_cross_tenant_closes_with_1008_and_audits(
 
             with (
                 pytest.raises(WebSocketDisconnect) as exc_info,
-                client.websocket_connect(f"/api/projects/{project_id}/operativa/ws"),
+                client.websocket_connect(f"/api/pairs/{project_id}/operativa/ws"),
             ):
                 pass
 
@@ -541,7 +541,7 @@ async def test_ws_cross_tenant_closes_with_1008_and_audits(
         assert len(audit_calls) == 1, audit_calls
         call = audit_calls[0]
         assert str(call["target_project_id"]) == str(project_id)
-        assert call["table_name"] == "projects"
+        assert call["table_name"] == "pairs"
         assert call["operation"] == "operativa_ws_subscribe"
     finally:
         await _dispose_engine()
@@ -591,7 +591,7 @@ async def test_ws_owner_handshake_accepts_and_sees_event(monkeypatch, migrated_d
             assert login.status_code == 200, login.text
 
             with client.websocket_connect(
-                f"/api/projects/{project_id}/operativa/ws"
+                f"/api/pairs/{project_id}/operativa/ws"
             ) as ws:
                 # Receive at least one event (heartbeat or snapshot)
                 # within a reasonable budget. WebSocketTestSession

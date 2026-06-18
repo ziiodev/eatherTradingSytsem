@@ -48,7 +48,7 @@ from aether_api.services.chat.anthropic_client import (
 )
 from aether_api.services.chat.context import (
     ChatDispatchContext,
-    build_project_snapshot,
+    build_pair_snapshot,
     build_system_prompt,
 )
 from aether_api.services.chat.tools import dispatch_tool
@@ -150,10 +150,10 @@ async def generate_sse_events(
     # 2. Build the snapshot + system prompt + tools.
     # ------------------------------------------------------------------
     async with ctx.db_session_factory() as session:
-        snapshot = await build_project_snapshot(
+        snapshot = await build_pair_snapshot(
             session,
             user_id=ctx.user_id,
-            project_id=ctx.project_id,
+            pair_id=ctx.pair_id,
         )
     system_prompt = build_system_prompt(snapshot)
     tools = catalogue_to_anthropic_tools()

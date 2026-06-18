@@ -110,7 +110,7 @@ def _patch_mcp_client(**responses: Any):
             }
 
     with patch(
-        "aether_api.routers.projects_live.get_mcp_client", return_value=_Fake()
+        "aether_api.routers.pairs_live.get_mcp_client", return_value=_Fake()
     ):
         yield
 
@@ -125,7 +125,7 @@ async def test_post_orders_503_when_disabled(app_client) -> None:  # type: ignor
     get_settings.cache_clear()
     with _patch_mcp_client():
         resp = await app_client.post(
-            f"/api/projects/{project_id}/orders",
+            f"/api/pairs/{project_id}/orders",
             json={
                 "symbol": "EURUSD",
                 "side": "buy",
@@ -146,7 +146,7 @@ async def test_post_orders_503_when_disabled(app_client) -> None:  # type: ignor
 async def test_cross_tenant_orders_returns_404(app_client) -> None:  # type: ignore[no-untyped-def]
     await _seed_and_login(app_client)
     other_project_id = uuid.uuid4()
-    resp = await app_client.get(f"/api/projects/{other_project_id}/orders")
+    resp = await app_client.get(f"/api/pairs/{other_project_id}/orders")
     assert resp.status_code == 404
 
 
@@ -164,7 +164,7 @@ async def test_mcp_unreachable_writes_audit_row(
 
     with _patch_mcp_client(get_account=MCPUnreachable("simulated outage")):
         resp = await app_client.post(
-            f"/api/projects/{project_id}/orders",
+            f"/api/pairs/{project_id}/orders",
             json={
                 "symbol": "EURUSD",
                 "side": "buy",
@@ -181,7 +181,7 @@ async def test_mcp_unreachable_writes_audit_row(
     maker = get_session_maker()
     async with maker() as session:
         rows = (
-            (await session.execute(select(OrderLog).where(OrderLog.project_id == project_id)))
+            (await session.execute(select(OrderLog).where(OrderLog.pair_id == project_id)))
             .scalars()
             .all()
         )
@@ -203,7 +203,7 @@ async def test_missing_sl_rejected_at_router(
     get_settings.cache_clear()
 
     resp = await app_client.post(
-        f"/api/projects/{project_id}/orders",
+        f"/api/pairs/{project_id}/orders",
         json={"symbol": "EURUSD", "side": "buy", "volume": "0.01", "sl": "0"},
         headers=_csrf_headers(app_client),
     )
@@ -224,7 +224,7 @@ async def test_two_phase_audit_on_success(
 
     with _patch_mcp_client():
         resp = await app_client.post(
-            f"/api/projects/{project_id}/orders",
+            f"/api/pairs/{project_id}/orders",
             json={
                 "symbol": "EURUSD",
                 "side": "buy",
@@ -245,7 +245,7 @@ async def test_two_phase_audit_on_success(
     maker = get_session_maker()
     async with maker() as session:
         rows = (
-            (await session.execute(select(OrderLog).where(OrderLog.project_id == project_id)))
+            (await session.execute(select(OrderLog).where(OrderLog.pair_id == project_id)))
             .scalars()
             .all()
         )

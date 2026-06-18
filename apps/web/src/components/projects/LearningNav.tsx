@@ -22,34 +22,35 @@ import { Brain, Layers, MoonStar } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface LearningNavProps {
-  projectId: string;
+  accountId: string;
+  pairId: string;
   className?: string;
 }
 
 interface NavEntry {
-  href: (id: string) => string;
+  href: (base: string) => string;
   label: string;
-  match: (pathname: string, id: string) => boolean;
+  match: (pathname: string, base: string) => boolean;
   Icon: typeof Brain;
 }
 
 const ENTRIES: ReadonlyArray<NavEntry> = [
   {
-    href: (id) => `/proyectos/${id}/q-tables`,
+    href: (base) => `${base}/q-tables`,
     label: "Q-Tables",
-    match: (p, id) => p.startsWith(`/proyectos/${id}/q-tables`),
+    match: (p, base) => p.startsWith(`${base}/q-tables`),
     Icon: Layers,
   },
   {
-    href: (id) => `/proyectos/${id}/memoria`,
+    href: (base) => `${base}/memoria`,
     label: "Memoria",
-    match: (p, id) => p.startsWith(`/proyectos/${id}/memoria`),
+    match: (p, base) => p.startsWith(`${base}/memoria`),
     Icon: Brain,
   },
   {
-    href: (id) => `/proyectos/${id}/sleep-runs`,
+    href: (base) => `${base}/sleep-runs`,
     label: "Sleep Runs",
-    match: (p, id) => p.startsWith(`/proyectos/${id}/sleep-runs`),
+    match: (p, base) => p.startsWith(`${base}/sleep-runs`),
     Icon: MoonStar,
   },
 ];
@@ -63,25 +64,27 @@ export function isLearningUiEnabled(): boolean {
 }
 
 export function LearningNav({
-  projectId,
+  accountId,
+  pairId,
   className,
 }: LearningNavProps): React.JSX.Element | null {
   const pathname = usePathname() ?? "";
+  const base = `/cuentas/${accountId}/pares/${pairId}`;
   if (!isLearningUiEnabled()) return null;
   return (
     <nav
-      aria-label="Aprendizaje del proyecto"
+      aria-label="Aprendizaje del par"
       className={cn(
         "flex flex-wrap items-center gap-1 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--background-elevated))] p-1",
         className,
       )}
     >
       {ENTRIES.map(({ href, label, match, Icon }) => {
-        const active = match(pathname, projectId);
+        const active = match(pathname, base);
         return (
           <Link
             key={label}
-            href={href(projectId)}
+            href={href(base)}
             aria-current={active ? "page" : undefined}
             className={cn(
               "inline-flex items-center gap-2 rounded-sm px-3 py-1 text-sm transition-colors",

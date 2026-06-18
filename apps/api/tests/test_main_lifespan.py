@@ -124,7 +124,7 @@ async def test_lifespan_skips_sweeper_and_router_when_chat_disabled(
             random_pid = _uuid.uuid4()
             random_cid = _uuid.uuid4()
             resp = await client.post(
-                f"/api/projects/{random_pid}/chat/conversations/{random_cid}/messages",
+                f"/api/pairs/{random_pid}/chat/conversations/{random_cid}/messages",
                 json={"content": "noop"},
             )
             assert resp.status_code == 404, resp.text

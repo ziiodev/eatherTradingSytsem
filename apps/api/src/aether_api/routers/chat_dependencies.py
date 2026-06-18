@@ -31,7 +31,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aether_api.models.chat_conversation import ChatConversation
-from aether_api.models.project import Project
+from aether_api.models.pair import Pair
 
 #: Hard cap on cumulative tokens per conversation. Once
 #: ``chat_conversations.tokens_in_total`` reaches this value the next
@@ -130,8 +130,8 @@ async def chat_budget_check(
     """
     stmt = (
         select(ChatConversation.tokens_in_total)
-        .join(Project, Project.id == ChatConversation.project_id)
-        .where(Project.user_id == user_id)
+        .join(Pair, Pair.id == ChatConversation.pair_id)
+        .where(Pair.user_id == user_id)
         .where(ChatConversation.id == conversation_id)
     )
     result = await session.execute(stmt)

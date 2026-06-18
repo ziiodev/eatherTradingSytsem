@@ -47,12 +47,12 @@ class ConfigVersion(Base):
         server_default=text("gen_random_uuid()"),
     )
 
-    project_id: Mapped[uuid.UUID] = mapped_column(
+    pair_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("projects.id", ondelete="RESTRICT"),
+        ForeignKey("pairs.id", ondelete="RESTRICT"),
         nullable=False,
     )
-    # Self-FK lineage. NULL on the first version of a project.
+    # Self-FK lineage. NULL on the first version of a pair.
     parent_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("config_versions.id"),
@@ -92,7 +92,7 @@ class ConfigVersion(Base):
     version_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
 
     # --- Relations
-    project = relationship("Project", lazy="raise")
+    pair = relationship("Pair", lazy="raise")
     sleep_run = relationship("SleepRun", lazy="raise")
     parent = relationship(
         "ConfigVersion",
@@ -113,6 +113,6 @@ class ConfigVersion(Base):
 
     def __repr__(self) -> str:  # pragma: no cover
         return (
-            f"<ConfigVersion id={self.id} project_id={self.project_id} "
+            f"<ConfigVersion id={self.id} pair_id={self.pair_id} "
             f"risk={self.risk_class} status={self.status}>"
         )

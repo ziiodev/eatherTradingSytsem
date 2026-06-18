@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-interface Project {
+interface Pair {
   id: string;
   name: string;
   symbol?: string | null;
@@ -10,21 +10,21 @@ interface Project {
 }
 
 /**
- * Dashboard main view — shows ONLY active projects (`status = 'active'`),
+ * Dashboard main view — shows ONLY active pairs (`status = 'active'`),
  * per the Charter "Dashboard & UI" section. Other statuses live under the
- * Proyectos sidebar entry.
+ * Cuentas sidebar entry (each pair sits under its owning account).
  */
-async function fetchActiveProjects(
+async function fetchActivePairs(
   cookieHeader: string,
-): Promise<Project[] | null> {
+): Promise<Pair[] | null> {
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
   try {
-    const res = await fetch(`${apiBase}/api/projects?status=active`, {
+    const res = await fetch(`${apiBase}/api/pairs?status=active`, {
       headers: { Cookie: cookieHeader, Accept: "application/json" },
       cache: "no-store",
     });
     if (!res.ok) return null;
-    const body = (await res.json()) as Project[] | { items?: Project[] };
+    const body = (await res.json()) as Pair[] | { items?: Pair[] };
     return Array.isArray(body) ? body : (body.items ?? []);
   } catch {
     return null;
@@ -37,22 +37,22 @@ export default async function DashboardHome(): Promise<React.JSX.Element> {
     .getAll()
     .map((c) => `${c.name}=${c.value}`)
     .join("; ");
-  const projects = await fetchActiveProjects(cookieHeader);
+  const pairs = await fetchActivePairs(cookieHeader);
 
   return (
     <section className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight">
-          Proyectos activos
+          Pares activos
         </h1>
         <p className="text-sm text-[rgb(var(--foreground-muted))]">
-          Vista general de los proyectos en estado <code>active</code>. Los
-          proyectos pausados, detenidos, con error o en mantenimiento se
-          gestionan desde la sección <strong>Proyectos</strong>.
+          Vista general de los pares en estado <code>active</code>. Los
+          pares pausados, detenidos, con error o en mantenimiento se
+          gestionan desde la sección <strong>Cuentas</strong>.
         </p>
       </header>
 
-      {projects === null && (
+      {pairs === null && (
         <Card>
           <CardHeader>
             <CardTitle>Backend no disponible</CardTitle>
@@ -66,22 +66,22 @@ export default async function DashboardHome(): Promise<React.JSX.Element> {
         </Card>
       )}
 
-      {projects !== null && projects.length === 0 && (
+      {pairs !== null && pairs.length === 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Aún no tienes proyectos activos</CardTitle>
+            <CardTitle>Aún no tienes pares activos</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-[rgb(var(--foreground-muted))]">
-              No tienes proyectos activos aún. Crea uno en Proyectos.
+              No tienes pares activos aún. Crea uno desde Cuentas.
             </p>
           </CardContent>
         </Card>
       )}
 
-      {projects !== null && projects.length > 0 && (
+      {pairs !== null && pairs.length > 0 && (
         <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {projects.map((p) => (
+          {pairs.map((p) => (
             <li key={p.id}>
               <Card>
                 <CardHeader>

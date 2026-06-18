@@ -5,19 +5,19 @@ import { toast } from "sonner";
 
 import { ApiError } from "@/lib/api";
 import {
-  buildProjectImage,
-  createProjectContainer,
-  getProjectContainerLogs,
-  listProjectContainerEvents,
-  pauseProjectContainer,
+  buildPairImage,
+  createPairContainer,
+  getPairContainerLogs,
+  listPairContainerEvents,
+  pausePairContainer,
   previewDockerfile,
-  recreateProjectContainer,
-  removeProjectContainer,
-  startProjectContainer,
-  stopProjectContainer,
+  recreatePairContainer,
+  removePairContainer,
+  startPairContainer,
+  stopPairContainer,
   type ContainerEventRow,
-  type ProjectDetail,
-} from "@/lib/projects";
+  type PairDetail,
+} from "@/lib/pairs";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/dialog";
 
 /**
- * Infrastructure tab inside /proyectos/[id].
+ * Infrastructure tab inside /cuentas/[accountId]/pares/[pairId].
  *
  * Surfaces:
  * - Status panel (container_id, image, mcp_url, last reconcile result).
@@ -42,8 +42,8 @@ import {
  * structured ``{op, cause}`` detail.
  */
 export interface InfraestructuraPanelProps {
-  project: ProjectDetail;
-  onProjectUpdated?: (next: ProjectDetail) => void;
+  pair: PairDetail;
+  onPairUpdated?: (next: PairDetail) => void;
 }
 
 const LOGS_REFRESH_MS = 5_000;
@@ -60,8 +60,8 @@ type Pending =
   | "remove";
 
 export function InfraestructuraPanel({
-  project,
-  onProjectUpdated,
+  pair,
+  onPairUpdated,
 }: InfraestructuraPanelProps): React.JSX.Element {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewText, setPreviewText] = useState<string | null>(null);
@@ -80,7 +80,7 @@ export function InfraestructuraPanel({
   // Logs poller — 5 s tick when the container exists.
   // ------------------------------------------------------------------
   useEffect(() => {
-    if (!project.container_id) {
+    if (!pair.container_id) {
       setLogs("");
       return;
     }
@@ -89,7 +89,7 @@ export function InfraestructuraPanel({
 
     const tick = async () => {
       try {
-        const body = await getProjectContainerLogs(project.id, 200);
+        const body = await getPairContainerLogs(pair.id, 200);
         if (!cancelled) {
           setLogs(body);
           setLogsError(null);
@@ -111,7 +111,7 @@ export function InfraestructuraPanel({
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [project.id, project.container_id]);
+  }, [pair.id, pair.container_id]);
 
   // ------------------------------------------------------------------
   // Events feed poller — slower tick.
@@ -122,7 +122,7 @@ export function InfraestructuraPanel({
 
     const tick = async () => {
       try {
-        const resp = await listProjectContainerEvents(project.id, { limit: 20 });
+        const resp = await listPairContainerEvents(pair.id, { limit: 20 });
         if (!cancelled) {
           setEvents(resp.items);
           setEventsError(null);
@@ -146,7 +146,7 @@ export function InfraestructuraPanel({
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [project.id]);
+  }, [pair.id]);
 
   // ------------------------------------------------------------------
   // Dockerfile preview
@@ -157,7 +157,7 @@ export function InfraestructuraPanel({
     setPreviewError(null);
     setPreviewText(null);
     try {
-      const text = await previewDockerfile(project.id);
+      const text = await previewDockerfile(pair.id);
       setPreviewText(text);
     } catch (err) {
       if (err instanceof ApiError && err.status === 422) {
@@ -178,7 +178,7 @@ export function InfraestructuraPanel({
     } finally {
       setPreviewLoading(false);
     }
-  }, [project.id]);
+  }, [pair.id]);
 
   // ------------------------------------------------------------------
   // Lifecycle button handlers — each one wraps a docker_control call
@@ -195,12 +195,12 @@ export function InfraestructuraPanel({
       toast.success(okMessage);
       // Refresh events feed so the new audit row appears immediately.
       try {
-        const resp = await listProjectContainerEvents(project.id, { limit: 20 });
+        const resp = await listPairContainerEvents(pair.id, { limit: 20 });
         setEvents(resp.items);
       } catch {
         // best-effort — the poller will catch up.
       }
-      onProjectUpdated?.(project);
+      onPairUpdated?.(pair);
     } catch (err) {
       if (err instanceof ApiError) {
         const detail =
@@ -228,9 +228,9 @@ export function InfraestructuraPanel({
     }
   }
 
-  const hasContainer = Boolean(project.container_id);
-  const isActive = project.status === "active";
-  const isPaused = project.status === "paused";
+  const hasContainer = Boolean(pair.container_id);
+  const isActive = pair.status === "active";
+  const isPaused = pair.status === "paused";
   const disabled = pending !== null;
 
   return (
@@ -239,15 +239,15 @@ export function InfraestructuraPanel({
       <div className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--background-elevated))] p-4">
         <h3 className="text-sm font-semibold">Infraestructura</h3>
         <dl className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
-          <Row label="Container ID" value={project.container_id ?? "—"} mono />
-          <Row label="Container Name" value={project.container_name ?? "—"} mono />
-          <Row label="Imagen Docker" value={project.docker_image ?? "—"} mono />
-          <Row label="MCP URL" value={project.mcp_url} mono />
+          <Row label="Container ID" value={pair.container_id ?? "—"} mono />
+          <Row label="Container Name" value={pair.container_name ?? "—"} mono />
+          <Row label="Imagen Docker" value={pair.docker_image ?? "—"} mono />
+          <Row label="MCP URL" value={pair.mcp_url} mono />
           <Row
             label="MCP Port"
-            value={project.mcp_port !== null ? String(project.mcp_port) : "—"}
+            value={pair.mcp_port !== null ? String(pair.mcp_port) : "—"}
           />
-          <Row label="Estado" value={project.status} />
+          <Row label="Estado" value={pair.status} />
         </dl>
       </div>
 
@@ -265,7 +265,7 @@ export function InfraestructuraPanel({
         <Button
           size="sm"
           onClick={() =>
-            void runOp("build", () => buildProjectImage(project.id), "Imagen construida")
+            void runOp("build", () => buildPairImage(pair.id), "Imagen construida")
           }
           disabled={disabled}
         >
@@ -278,7 +278,7 @@ export function InfraestructuraPanel({
           onClick={() =>
             void runOp(
               "create",
-              () => createProjectContainer(project.id),
+              () => createPairContainer(pair.id),
               "Container creado",
             )
           }
@@ -297,7 +297,7 @@ export function InfraestructuraPanel({
           onClick={() =>
             void runOp(
               "start",
-              () => startProjectContainer(project.id),
+              () => startPairContainer(pair.id),
               "Container iniciado",
             )
           }
@@ -312,7 +312,7 @@ export function InfraestructuraPanel({
           onClick={() =>
             void runOp(
               "pause",
-              () => pauseProjectContainer(project.id),
+              () => pausePairContainer(pair.id),
               "Container pausado",
             )
           }
@@ -327,7 +327,7 @@ export function InfraestructuraPanel({
           onClick={() =>
             void runOp(
               "stop",
-              () => stopProjectContainer(project.id),
+              () => stopPairContainer(pair.id),
               "Container detenido",
             )
           }
@@ -342,7 +342,7 @@ export function InfraestructuraPanel({
           onClick={() =>
             void runOp(
               "recreate",
-              () => recreateProjectContainer(project.id),
+              () => recreatePairContainer(pair.id),
               "Container recreado",
             )
           }
@@ -357,7 +357,7 @@ export function InfraestructuraPanel({
           onClick={() =>
             void runOp(
               "remove",
-              () => removeProjectContainer(project.id),
+              () => removePairContainer(pair.id),
               "Container eliminado",
             )
           }

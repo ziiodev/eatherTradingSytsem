@@ -66,7 +66,7 @@ describe("qTableListResponseSchema", () => {
       items: [
         {
           id: "33333333-3333-3333-3333-333333333333",
-          project_id: PROJECT_ID,
+          pair_id: PROJECT_ID,
           version: 2,
           alpha_normal: "0.15",
           alpha_special: "0.35",
@@ -83,7 +83,7 @@ describe("qTableListResponseSchema", () => {
 
   it("rejects non-uuid project id", () => {
     const result = qTableListResponseSchema.safeParse({
-      items: [{ id: "x", project_id: "not-a-uuid", version: 1 }],
+      items: [{ id: "x", pair_id: "not-a-uuid", version: 1 }],
       total: 1,
     });
     expect(result.success).toBe(false);
@@ -94,7 +94,7 @@ describe("qTableResponseSchema", () => {
   it("preserves the table_data JSONB blob", () => {
     const parsed = qTableResponseSchema.parse({
       id: "33333333-3333-3333-3333-333333333333",
-      project_id: PROJECT_ID,
+      pair_id: PROJECT_ID,
       version: 1,
       alpha_normal: "0.15",
       alpha_special: "0.35",
@@ -112,7 +112,7 @@ describe("episodicMemorySchema", () => {
   it("accepts a row", () => {
     const parsed = episodicMemorySchema.parse({
       id: "44444444-4444-4444-4444-444444444444",
-      project_id: PROJECT_ID,
+      pair_id: PROJECT_ID,
       state_key: "abcd",
       action: "buy",
       reward: "0.42",
@@ -138,7 +138,7 @@ describe("semanticMemorySchema", () => {
   it("accepts an active rule", () => {
     const parsed = semanticMemorySchema.parse({
       id: "55555555-5555-5555-5555-555555555555",
-      project_id: PROJECT_ID,
+      pair_id: PROJECT_ID,
       rule_type: "avoid_state",
       body: "no operar en estado X",
       payload: {},
@@ -176,26 +176,26 @@ describe("sleepReportSchema", () => {
 });
 
 describe("fetchQTables URL composition", () => {
-  it("hits /api/projects/{id}/q-tables with pagination params", async () => {
+  it("hits /api/pairs/{id}/q-tables with pagination params", async () => {
     const captured = mockFetch({ items: [], total: 0 });
     await fetchQTables(PROJECT_ID, { limit: 25, offset: 50 });
     expect(captured.url).toBe(
-      `/api/projects/${PROJECT_ID}/q-tables?limit=25&offset=50`,
+      `/api/pairs/${PROJECT_ID}/q-tables?limit=25&offset=50`,
     );
   });
 
   it("omits the query string when no params are provided", async () => {
     const captured = mockFetch({ items: [], total: 0 });
     await fetchQTables(PROJECT_ID);
-    expect(captured.url).toBe(`/api/projects/${PROJECT_ID}/q-tables`);
+    expect(captured.url).toBe(`/api/pairs/${PROJECT_ID}/q-tables`);
   });
 });
 
 describe("fetchQTable", () => {
-  it("hits /api/projects/{id}/q-tables/{version}", async () => {
+  it("hits /api/pairs/{id}/q-tables/{version}", async () => {
     const captured = mockFetch({
       id: "33333333-3333-3333-3333-333333333333",
-      project_id: PROJECT_ID,
+      pair_id: PROJECT_ID,
       version: 3,
       alpha_normal: "0.15",
       alpha_special: "0.35",
@@ -207,7 +207,7 @@ describe("fetchQTable", () => {
     });
     const r = await fetchQTable(PROJECT_ID, 3);
     expect(r.version).toBe(3);
-    expect(captured.url).toBe(`/api/projects/${PROJECT_ID}/q-tables/3`);
+    expect(captured.url).toBe(`/api/pairs/${PROJECT_ID}/q-tables/3`);
   });
 });
 
@@ -250,7 +250,7 @@ describe("fetchSleepReport", () => {
     });
     await fetchSleepReport(PROJECT_ID, RUN_ID);
     expect(captured.url).toBe(
-      `/api/projects/${PROJECT_ID}/sleep-runs/${RUN_ID}/report`,
+      `/api/pairs/${PROJECT_ID}/sleep-runs/${RUN_ID}/report`,
     );
   });
 });

@@ -27,7 +27,7 @@ from decimal import Decimal
 from sqlalchemy import func, select, update
 
 from aether_api.models.chat_conversation import ChatConversation
-from aether_api.models.project import Project
+from aether_api.models.pair import Pair
 from aether_api.repositories.base import BaseRepository
 
 
@@ -40,8 +40,8 @@ class ChatConversationRepository(BaseRepository):
     async def _user_owns_project(
         self, user_id: uuid.UUID, project_id: uuid.UUID
     ) -> bool:
-        stmt = select(Project.id).where(
-            Project.id == project_id, Project.user_id == user_id
+        stmt = select(Pair.id).where(
+            Pair.id == project_id, Pair.user_id == user_id
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none() is not None
@@ -74,7 +74,7 @@ class ChatConversationRepository(BaseRepository):
             meta["model_override"] = model_override
 
         row = ChatConversation(
-            project_id=project_id,
+            pair_id=project_id,
             user_id=user_id,
             # When the caller passes ``None`` we let the DB default kick
             # in (server_default '(sin título)') by simply omitting the
@@ -104,8 +104,8 @@ class ChatConversationRepository(BaseRepository):
             update(ChatConversation)
             .where(ChatConversation.id == conversation_id)
             .where(
-                ChatConversation.project_id.in_(
-                    select(Project.id).where(Project.user_id == user_id)
+                ChatConversation.pair_id.in_(
+                    select(Pair.id).where(Pair.user_id == user_id)
                 )
             )
             .values(archived_at=func.now(), updated_at=func.now())
@@ -131,8 +131,8 @@ class ChatConversationRepository(BaseRepository):
             update(ChatConversation)
             .where(ChatConversation.id == conversation_id)
             .where(
-                ChatConversation.project_id.in_(
-                    select(Project.id).where(Project.user_id == user_id)
+                ChatConversation.pair_id.in_(
+                    select(Pair.id).where(Pair.user_id == user_id)
                 )
             )
             .values(title=title, updated_at=func.now())
@@ -165,8 +165,8 @@ class ChatConversationRepository(BaseRepository):
             update(ChatConversation)
             .where(ChatConversation.id == conversation_id)
             .where(
-                ChatConversation.project_id.in_(
-                    select(Project.id).where(Project.user_id == user_id)
+                ChatConversation.pair_id.in_(
+                    select(Pair.id).where(Pair.user_id == user_id)
                 )
             )
             .values(
@@ -194,8 +194,8 @@ class ChatConversationRepository(BaseRepository):
         """Return the conversation IFF the caller owns its project."""
         stmt = (
             select(ChatConversation)
-            .join(Project, Project.id == ChatConversation.project_id)
-            .where(Project.user_id == user_id)
+            .join(Pair, Pair.id == ChatConversation.pair_id)
+            .where(Pair.user_id == user_id)
             .where(ChatConversation.id == conversation_id)
         )
         result = await self.session.execute(stmt)
@@ -220,9 +220,9 @@ class ChatConversationRepository(BaseRepository):
         """
         base = (
             select(ChatConversation)
-            .join(Project, Project.id == ChatConversation.project_id)
-            .where(Project.user_id == user_id)
-            .where(ChatConversation.project_id == project_id)
+            .join(Pair, Pair.id == ChatConversation.pair_id)
+            .where(Pair.user_id == user_id)
+            .where(ChatConversation.pair_id == project_id)
         )
         if archived:
             base = base.where(ChatConversation.archived_at.is_not(None))
@@ -242,9 +242,9 @@ class ChatConversationRepository(BaseRepository):
 
         count_stmt = (
             select(func.count(ChatConversation.id))
-            .join(Project, Project.id == ChatConversation.project_id)
-            .where(Project.user_id == user_id)
-            .where(ChatConversation.project_id == project_id)
+            .join(Pair, Pair.id == ChatConversation.pair_id)
+            .where(Pair.user_id == user_id)
+            .where(ChatConversation.pair_id == project_id)
         )
         if archived:
             count_stmt = count_stmt.where(ChatConversation.archived_at.is_not(None))

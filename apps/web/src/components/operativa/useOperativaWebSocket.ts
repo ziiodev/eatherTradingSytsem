@@ -6,7 +6,7 @@
  *
  * Design (per `sdd/project-operativa/spec/operativa-live` + design #2125):
  *
- * - WebSocket-first: opens `/api/projects/{id}/operativa/ws` (same origin,
+ * - WebSocket-first: opens `/api/pairs/{id}/operativa/ws` (same origin,
  *   cookie-auth) and consumes the `LiveBus` event stream (`account_snapshot`,
  *   `position_snapshot`, `order_event`, `mcp_status`, `ping`).
  * - REST polling fallback: a 10s polling timer runs unconditionally while
@@ -93,16 +93,16 @@ const INITIAL_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
 const WS_CLOSE_POLICY_VIOLATION = 1008;
 
-function buildWsUrl(projectId: string): string {
+function buildWsUrl(pairId: string): string {
   if (typeof window === "undefined") {
-    return `/api/projects/${projectId}/operativa/ws`;
+    return `/api/pairs/${pairId}/operativa/ws`;
   }
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${window.location.host}/api/projects/${projectId}/operativa/ws`;
+  return `${proto}//${window.location.host}/api/pairs/${pairId}/operativa/ws`;
 }
 
 export function useOperativaWebSocket(
-  projectId: string,
+  pairId: string,
   options: UseOperativaWebSocketOptions = {},
 ): UseOperativaWebSocketResult {
   const {
@@ -180,7 +180,7 @@ export function useOperativaWebSocket(
   const restPoll = useCallback(async () => {
     if (unmountedRef.current) return;
     try {
-      const summary = await fetchAccountSummary(projectId);
+      const summary = await fetchAccountSummary(pairId);
       if (unmountedRef.current) return;
       // The WS is the source of truth once we're live — never let a
       // REST response that resolved during the gap overwrite a fresher
@@ -192,7 +192,7 @@ export function useOperativaWebSocket(
       // Swallow network errors — the next tick may succeed. UI surfaces
       // the gap via stale `source_at`.
     }
-  }, [projectId]);
+  }, [pairId]);
 
   // The two functions form a recursive pair: openWebSocket triggers
   // scheduleReconnect on close, scheduleReconnect calls openWebSocket
@@ -204,7 +204,7 @@ export function useOperativaWebSocket(
   const openWebSocket = useCallback(() => {
     if (unmountedRef.current) return;
 
-    const url = buildWsUrl(projectId);
+    const url = buildWsUrl(pairId);
     let ws: WebSocket;
     try {
       ws = webSocketFactory ? webSocketFactory(url) : new WebSocket(url);
@@ -251,7 +251,7 @@ export function useOperativaWebSocket(
       }
       scheduleReconnectRef.current();
     };
-  }, [projectId, webSocketFactory, handleEvent]);
+  }, [pairId, webSocketFactory, handleEvent]);
 
   const scheduleReconnect = useCallback(() => {
     if (unmountedRef.current) return;
@@ -292,7 +292,7 @@ export function useOperativaWebSocket(
     // Initial REST fetches — independent of WS so the UI has data
     // before the first WS event arrives.
     void restPoll();
-    void fetchOrders(projectId, { limit: 1 }).catch(() => {
+    void fetchOrders(pairId, { limit: 1 }).catch(() => {
       /* swallowed — the history table fetches its own slice anyway */
     });
 
@@ -324,7 +324,7 @@ export function useOperativaWebSocket(
         wsRef.current = null;
       }
     };
-  }, [enabled, projectId, openWebSocket, restPoll, restPollMs]);
+  }, [enabled, pairId, openWebSocket, restPoll, restPollMs]);
 
   return useMemo(
     () => ({

@@ -81,9 +81,9 @@ class Order(Base):
         primary_key=True,
         server_default=text("gen_random_uuid()"),
     )
-    project_id: Mapped[uuid.UUID] = mapped_column(
+    pair_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("projects.id", ondelete="RESTRICT"),
+        ForeignKey("pairs.id", ondelete="RESTRICT"),
         nullable=False,
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -137,7 +137,7 @@ class Order(Base):
     )
 
     # --- Relations
-    project = relationship("Project", lazy="raise")
+    pair = relationship("Pair", lazy="raise")
     user = relationship("User", lazy="raise")
     agent = relationship("Agent", lazy="raise")
 
@@ -182,9 +182,9 @@ class OrderLog(Base):
         ForeignKey("orders.id", ondelete="CASCADE"),
         nullable=True,
     )
-    project_id: Mapped[uuid.UUID] = mapped_column(
+    pair_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("projects.id", ondelete="RESTRICT"),
+        ForeignKey("pairs.id", ondelete="RESTRICT"),
         nullable=False,
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -224,9 +224,9 @@ class OrderApproval(Base):
         primary_key=True,
         server_default=text("gen_random_uuid()"),
     )
-    project_id: Mapped[uuid.UUID] = mapped_column(
+    pair_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("projects.id", ondelete="RESTRICT"),
+        ForeignKey("pairs.id", ondelete="RESTRICT"),
         nullable=False,
     )
     user_id: Mapped[uuid.UUID] = mapped_column(

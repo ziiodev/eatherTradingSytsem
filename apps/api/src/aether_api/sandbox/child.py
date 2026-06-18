@@ -307,43 +307,43 @@ def child_main(read_conn: Any, write_conn: Any, rpc_conn: Any | None = None) -> 
             ctx_obj.qtable = QTableProxy(
                 _rpc=rpc_client,
                 user_id=ctx_obj.user_id,
-                project_id=ctx_obj.project_id,
+                project_id=ctx_obj.pair_id,
             )
             ctx_obj.semantic = SemanticProxy(
                 _rpc=rpc_client,
                 user_id=ctx_obj.user_id,
-                project_id=ctx_obj.project_id,
+                project_id=ctx_obj.pair_id,
             )
             ctx_obj.episodic = EpisodicProxy(
                 _rpc=rpc_client,
                 user_id=ctx_obj.user_id,
-                project_id=ctx_obj.project_id,
+                project_id=ctx_obj.pair_id,
             )
         else:
             ctx_obj.qtable = NoopQTable(
                 user_id=ctx_obj.user_id,
-                project_id=ctx_obj.project_id,
+                project_id=ctx_obj.pair_id,
             )
             ctx_obj.semantic = NoopSemantic(
                 user_id=ctx_obj.user_id,
-                project_id=ctx_obj.project_id,
+                project_id=ctx_obj.pair_id,
             )
             ctx_obj.episodic = NoopEpisodic(
                 user_id=ctx_obj.user_id,
-                project_id=ctx_obj.project_id,
+                project_id=ctx_obj.pair_id,
             )
 
         if operativa_on and rpc_client is not None:
             ctx_obj.orders = OrdersProxy(
                 _rpc=rpc_client,
                 user_id=ctx_obj.user_id,
-                project_id=ctx_obj.project_id,
+                project_id=ctx_obj.pair_id,
                 agent_id=ctx_obj.agent_id,
             )
         else:
             ctx_obj.orders = NoopOrders(
                 user_id=ctx_obj.user_id,
-                project_id=ctx_obj.project_id,
+                project_id=ctx_obj.pair_id,
                 agent_id=ctx_obj.agent_id,
             )
 

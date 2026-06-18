@@ -148,7 +148,7 @@ async def test_apply_q_update_pass_computes_bellman_update(app_client) -> None:
     from datetime import UTC
 
     from aether_api.db.session import get_session_maker
-    from aether_api.repositories.project_repository import ProjectRepository
+    from aether_api.repositories.pair_repository import PairRepository
     from aether_api.sleep.learning_step import (
         ALPHA_NORMAL,
         GAMMA,
@@ -186,7 +186,7 @@ async def test_apply_q_update_pass_computes_bellman_update(app_client) -> None:
         await session.commit()
 
     async with maker() as session:
-        project = await ProjectRepository(session).get_for_user(user_id, project_id)
+        project = await PairRepository(session).get_for_user(user_id, project_id)
         run = await _seed_sleep_run(
             session, user_id=user_id, project_id=project_id
         )
@@ -217,13 +217,13 @@ async def test_apply_q_update_pass_computes_bellman_update(app_client) -> None:
 async def test_apply_q_update_pass_zero_trades_returns_empty(app_client) -> None:
     """No episodes → trades_processed=0, new_table mirrors old_table."""
     from aether_api.db.session import get_session_maker
-    from aether_api.repositories.project_repository import ProjectRepository
+    from aether_api.repositories.pair_repository import PairRepository
     from aether_api.sleep.learning_step import apply_q_update_pass
 
     user_id, project_id = await _seed_user_project()
     maker = get_session_maker()
     async with maker() as session:
-        project = await ProjectRepository(session).get_for_user(user_id, project_id)
+        project = await PairRepository(session).get_for_user(user_id, project_id)
         run = await _seed_sleep_run(
             session, user_id=user_id, project_id=project_id
         )
@@ -249,7 +249,7 @@ async def test_apply_q_update_pass_zero_trades_returns_empty(app_client) -> None
 async def test_apply_q_update_pass_tags_special_by_magnitude(app_client) -> None:
     """``|reward| >= threshold`` ⇒ is_special=True ⇒ α=ALPHA_SPECIAL."""
     from aether_api.db.session import get_session_maker
-    from aether_api.repositories.project_repository import ProjectRepository
+    from aether_api.repositories.pair_repository import PairRepository
     from aether_api.sleep.learning_step import (
         ALPHA_NORMAL,
         ALPHA_SPECIAL,
@@ -291,7 +291,7 @@ async def test_apply_q_update_pass_tags_special_by_magnitude(app_client) -> None
         await session.commit()
 
     async with maker() as session:
-        project = await ProjectRepository(session).get_for_user(user_id, project_id)
+        project = await PairRepository(session).get_for_user(user_id, project_id)
         run = await _seed_sleep_run(
             session, user_id=user_id, project_id=project_id
         )
@@ -317,7 +317,7 @@ async def test_apply_q_update_pass_tags_special_by_rule_violation(
 ) -> None:
     """``meta_data.rule_violation = True`` ⇒ special regardless of magnitude."""
     from aether_api.db.session import get_session_maker
-    from aether_api.repositories.project_repository import ProjectRepository
+    from aether_api.repositories.pair_repository import PairRepository
     from aether_api.sleep.learning_step import apply_q_update_pass
 
     user_id, project_id = await _seed_user_project()
@@ -337,7 +337,7 @@ async def test_apply_q_update_pass_tags_special_by_rule_violation(
         await session.commit()
 
     async with maker() as session:
-        project = await ProjectRepository(session).get_for_user(user_id, project_id)
+        project = await PairRepository(session).get_for_user(user_id, project_id)
         run = await _seed_sleep_run(
             session, user_id=user_id, project_id=project_id
         )
@@ -395,7 +395,7 @@ async def _run_finalize(
     into other tests).
     """
     from aether_api.db.session import get_session_maker
-    from aether_api.repositories.project_repository import ProjectRepository
+    from aether_api.repositories.pair_repository import PairRepository
     from aether_api.repositories.q_table_repository import QTableRepository
     from aether_api.repositories.sleep_report_repository import (
         SleepReportRepository,
@@ -420,7 +420,7 @@ async def _run_finalize(
         await session.commit()
 
     async with maker() as session:
-        project = await ProjectRepository(session).get_for_user(
+        project = await PairRepository(session).get_for_user(
             user_id, project_id
         )
         run = await _seed_sleep_run(

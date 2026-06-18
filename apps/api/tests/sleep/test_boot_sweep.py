@@ -23,7 +23,7 @@ async def _seed_running_run(session, *, started_minutes_ago: int):
     await session.flush()
 
     run = SleepRun(
-        project_id=project.id,
+        pair_id=project.id,
         user_id=user.id,
         phase_type="micro",
         status="running",
@@ -39,7 +39,7 @@ async def _seed_running_run(session, *, started_minutes_ago: int):
 async def test_boot_sweep_marks_stale_runs_crashed(app_client) -> None:
     from aether_api.core.settings import get_settings
     from aether_api.db.session import get_session_maker
-    from aether_api.repositories.project_repository import ProjectRepository
+    from aether_api.repositories.pair_repository import PairRepository
     from aether_api.sleep.boot_sweep import recover_stale_runs
     from aether_api.sleep.repositories import SleepRunRepository
 
@@ -64,7 +64,7 @@ async def test_boot_sweep_marks_stale_runs_crashed(app_client) -> None:
         assert refreshed.status == "crashed"
         assert refreshed.ended_at is not None
 
-        proj = await ProjectRepository(session).get_for_user(user.id, project.id)
+        proj = await PairRepository(session).get_for_user(user.id, project.id)
         assert proj is not None
         # Status restored to 'active' (from 'maintenance').
         assert proj.status == "active"

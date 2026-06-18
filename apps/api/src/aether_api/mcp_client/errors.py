@@ -28,7 +28,7 @@ class MCPUnreachable(MCPClientError):
     """The per-project MCP endpoint did not answer in time.
 
     The endpoint handler maps this to HTTP 502 and (separately) flips the
-    project's status to ``error`` via ``ProjectRepository.update_status_if``
+    project's status to ``error`` via ``PairRepository.update_status_if``
     AND writes one ``order_log`` row with ``status='failed'``.
     """
 

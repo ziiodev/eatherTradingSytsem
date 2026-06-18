@@ -11,8 +11,14 @@ WHAT IT CREATES (all idempotent — re-running is safe):
 * bob@example.com    — admin user,     password: dev_only_change_me_aether_123
 * For alice: one demo worker agent, one investigator agent, one auditor agent
   (each with a placeholder `def on_tick(ctx): pass` body).
-* For alice: one demo project ``demo-eurusd-h1`` (``status='active'``) that
-  exercises the new Operativa / Chat / Configuración tabs end-to-end.
+* For alice: one demo Exchange (``DEMO``) + one demo Account
+  (``demo-account``) holding the broker-credential block. Every pair
+  hangs off this account (Exchange → Account → Pair hierarchy).
+* For alice: one fully-wired demo pair ``demo-eurusd-h1``
+  (``status='active'``) that exercises the new Operativa / Chat /
+  Configuración tabs end-to-end, PLUS three extra bare XAUUSD pairs
+  under the same account so the Cuentas → Pares list view is populated
+  (mirrors the product mock of a multi-pair broker account).
 * For that project:
     - 25 historical closed orders + 5 currently-open positions on EURUSD
       with realistic P&L, commission/swap breakdowns, and timestamps spread
@@ -63,10 +69,12 @@ from aether_api.db.session import get_session_maker
 from aether_api.learning.q_learning import state_key as compute_state_key
 from aether_api.models.agent import Agent
 from aether_api.models.chat_conversation import ChatConversation
+from aether_api.models.account import Account
 from aether_api.models.chat_message import ChatMessage
 from aether_api.models.episodic_memory import EpisodicMemory
+from aether_api.models.exchange import Exchange
 from aether_api.models.order import Order
-from aether_api.models.project import Project
+from aether_api.models.pair import Pair as Project
 from aether_api.models.q_table import QTable
 from aether_api.models.semantic_memory import SemanticMemory
 from aether_api.models.sleep_report import SleepReport
@@ -94,6 +102,18 @@ DEMO_AGENTS = [
 ]
 
 DEMO_PROJECT_NAME = "demo-eurusd-h1"
+
+#: Extra bare pairs created under the SAME demo account so the
+#: Cuentas → Pares list renders a realistic multi-pair account (mirrors
+#: the product mock: one broker account holding several XAUUSD pairs).
+#: These carry no rich Operativa / learning sub-data — the EURUSD demo
+#: pair (:data:`DEMO_PROJECT_NAME`) is the one wired end-to-end. Each
+#: entry is ``(name, symbol, timeframe, mcp_port, status)``.
+EXTRA_PAIRS: list[tuple[str, str, str, int, str]] = [
+    ("demo-xauusd-h1", "XAUUSD", "H1", 8082, "active"),
+    ("demo-xauusd-m15", "XAUUSD", "M15", 8083, "paused"),
+    ("demo-xauusd-h4", "XAUUSD", "H4", 8084, "inactive"),
+]
 
 # Demo Operativa / learning constants. Deterministic so re-runs == identity.
 RANDOM_SEED = 42
@@ -159,10 +179,53 @@ async def _get_or_create_agent(
     return agent, True
 
 
+async def _get_or_create_account(
+    session: AsyncSession, *, owner: User
+) -> Account:
+    """Create (or fetch) the demo Exchange + Account for ``owner``.
+
+    The accounts-pairs hierarchy requires every pair to hang off an
+    account; the demo seed provisions one broker exchange + one demo
+    account and reuses them across runs.
+    """
+    exchange = await session.scalar(
+        select(Exchange).where(
+            Exchange.user_id == owner.id, Exchange.code == "DEMO"
+        )
+    )
+    if exchange is None:
+        exchange = Exchange(
+            user_id=owner.id, name="Demo Broker", code="DEMO", kind="demo"
+        )
+        session.add(exchange)
+        await session.flush()
+
+    account = await session.scalar(
+        select(Account).where(
+            Account.user_id == owner.id,
+            Account.exchange_id == exchange.id,
+            Account.name == "demo-account",
+        )
+    )
+    if account is None:
+        account = Account(
+            user_id=owner.id,
+            exchange_id=exchange.id,
+            name="demo-account",
+            broker_name="DemoBroker",
+            account_currency="USD",
+            account_type="demo",
+        )
+        session.add(account)
+        await session.flush()
+    return account
+
+
 async def _get_or_create_project(
     session: AsyncSession,
     *,
     owner: User,
+    account: Account,
     name: str,
     worker: Agent,
     investigator: Agent,
@@ -193,6 +256,7 @@ async def _get_or_create_project(
         return existing, False
     project = Project(
         user_id=owner.id,
+        account_id=account.id,
         name=name,
         description="Auto-seeded demo project. Active by default for dev work.",
         symbol="EURUSD",
@@ -208,6 +272,52 @@ async def _get_or_create_project(
     session.add(project)
     await session.flush()
     return project, True
+
+
+async def _seed_extra_pairs(
+    session: AsyncSession,
+    *,
+    owner: User,
+    account: Account,
+    worker: Agent,
+    investigator: Agent,
+    auditor: Agent,
+) -> int:
+    """Idempotently create the extra bare pairs under ``account``.
+
+    Mirrors the product mock where one broker account holds several
+    pairs. These have no Operativa / learning sub-data — they exist so
+    the Cuentas → Pares list view is populated. Idempotence is keyed on
+    ``(user_id, name)``.
+
+    Returns the number of pairs inserted this run.
+    """
+    inserted = 0
+    for name, symbol, timeframe, mcp_port, status in EXTRA_PAIRS:
+        existing = await session.scalar(
+            select(Project.id).where(Project.user_id == owner.id, Project.name == name)
+        )
+        if existing is not None:
+            continue
+        pair = Project(
+            user_id=owner.id,
+            account_id=account.id,
+            name=name,
+            description=f"Auto-seeded {symbol} {timeframe} pair (multi-pair demo account).",
+            symbol=symbol,
+            timeframe=timeframe,
+            status=status,
+            mcp_url=f"http://localhost:{mcp_port}",
+            mcp_port=mcp_port,
+            capital_asignado=DEMO_CAPITAL,
+            worker_agent_id=worker.id,
+            investigator_agent_id=investigator.id,
+            auditor_agent_id=auditor.id,
+        )
+        session.add(pair)
+        inserted += 1
+    await session.flush()
+    return inserted
 
 
 # -----------------------------------------------------------------------------
@@ -278,7 +388,7 @@ async def _seed_orders(
         )
 
         order = Order(
-            project_id=project.id,
+            pair_id=project.id,
             user_id=owner.id,
             agent_id=worker_agent.id,
             symbol="EURUSD",
@@ -326,7 +436,7 @@ async def _seed_orders(
         )
 
         order = Order(
-            project_id=project.id,
+            pair_id=project.id,
             user_id=owner.id,
             agent_id=worker_agent.id,
             symbol="EURUSD",
@@ -357,7 +467,7 @@ async def _seed_chat(session: AsyncSession, *, project: Project, owner: User) ->
     """Insert one 4-turn chat conversation. Idempotent on title-per-project."""
     existing = await session.scalar(
         select(ChatConversation.id).where(
-            ChatConversation.project_id == project.id,
+            ChatConversation.pair_id == project.id,
             ChatConversation.title == DEMO_CHAT_TITLE,
         )
     )
@@ -413,7 +523,7 @@ async def _seed_chat(session: AsyncSession, *, project: Project, owner: User) ->
     usd_estimate = Decimal("0.012345")
 
     conv = ChatConversation(
-        project_id=project.id,
+        pair_id=project.id,
         user_id=owner.id,
         title=DEMO_CHAT_TITLE,
         tokens_in_total=tokens_in_total,
@@ -457,7 +567,7 @@ async def _seed_sleep_run(
 
     existing = await session.scalar(
         select(SleepRun).where(
-            SleepRun.project_id == project.id,
+            SleepRun.pair_id == project.id,
             SleepRun.phase_type == "profundo",
             SleepRun.started_at == started_at,
         )
@@ -466,7 +576,7 @@ async def _seed_sleep_run(
         return existing, False
 
     sleep_run = SleepRun(
-        project_id=project.id,
+        pair_id=project.id,
         user_id=owner.id,
         phase_type="profundo",
         status="succeeded",
@@ -537,7 +647,7 @@ async def _seed_qtable(session: AsyncSession, *, project: Project, sleep_run: Sl
     """Insert a deterministic 10-state Q-Table v1 for the project."""
     existing = await session.scalar(
         select(QTable.id).where(
-            QTable.project_id == project.id,
+            QTable.pair_id == project.id,
             QTable.version == 1,
         )
     )
@@ -555,7 +665,7 @@ async def _seed_qtable(session: AsyncSession, *, project: Project, sleep_run: Sl
         table[key] = {a: round(rng.uniform(-1.0, 1.5), 4) for a in actions}
 
     qtable = QTable(
-        project_id=project.id,
+        pair_id=project.id,
         version=1,
         table_data=table,
         alpha_normal=Decimal("0.150"),
@@ -622,7 +732,7 @@ async def _seed_semantic_rules(
     for rule in rules:
         existing = await session.scalar(
             select(SemanticMemory.id).where(
-                SemanticMemory.project_id == project.id,
+                SemanticMemory.pair_id == project.id,
                 SemanticMemory.rule_type == rule["rule_type"],
                 SemanticMemory.active.is_(True),
             )
@@ -630,7 +740,7 @@ async def _seed_semantic_rules(
         if existing is not None:
             continue
         row = SemanticMemory(
-            project_id=project.id,
+            pair_id=project.id,
             rule_type=rule["rule_type"],
             body=rule["body"],
             payload=rule["payload"],
@@ -666,7 +776,7 @@ async def _seed_episodic_memory(
             await session.execute(
                 select(Order)
                 .where(
-                    Order.project_id == project.id,
+                    Order.pair_id == project.id,
                     Order.status == "closed",
                 )
                 .order_by(Order.open_time.asc())
@@ -682,7 +792,7 @@ async def _seed_episodic_memory(
 
     # Idempotence guard — bail if any episodic row already exists for these.
     existing_count = await session.scalar(
-        select(func.count(EpisodicMemory.id)).where(EpisodicMemory.project_id == project.id)
+        select(func.count(EpisodicMemory.id)).where(EpisodicMemory.pair_id == project.id)
     )
     if existing_count and existing_count >= EPISODIC_ROWS:
         return 0
@@ -709,7 +819,7 @@ async def _seed_episodic_memory(
             duration_min = int((order.close_time - order.open_time).total_seconds() // 60)
 
         row = EpisodicMemory(
-            project_id=project.id,
+            pair_id=project.id,
             state_key=key,
             action=action,
             reward=reward,
@@ -758,10 +868,21 @@ async def seed_dev(session: AsyncSession) -> dict[str, Any]:
         agents_status.append((name, created))
         agents_by_type[type_] = agent
 
+    account = await _get_or_create_account(session, owner=alice)
     project, project_created = await _get_or_create_project(
         session,
         owner=alice,
+        account=account,
         name=DEMO_PROJECT_NAME,
+        worker=agents_by_type["worker"],
+        investigator=agents_by_type["investigator"],
+        auditor=agents_by_type["auditor"],
+    )
+
+    extra_pairs_inserted = await _seed_extra_pairs(
+        session,
+        owner=alice,
+        account=account,
         worker=agents_by_type["worker"],
         investigator=agents_by_type["investigator"],
         auditor=agents_by_type["auditor"],
@@ -785,6 +906,7 @@ async def seed_dev(session: AsyncSession) -> dict[str, Any]:
         "agents": agents_status,
         "project_created": project_created,
         "project_status": project.status,
+        "extra_pairs_inserted": extra_pairs_inserted,
         "orders_closed_inserted": closed_inserted,
         "orders_open_inserted": open_inserted,
         "chat_inserted": chat_inserted,
@@ -832,6 +954,10 @@ async def _main() -> int:
         f"  project {DEMO_PROJECT_NAME:<22} — "
         f"{'created' if digest['project_created'] else 'already present'} "
         f"(status={digest['project_status']})"
+    )
+    print(
+        f"  pairs    +{digest['extra_pairs_inserted']} extra under demo-account "
+        f"(plus {DEMO_PROJECT_NAME})"
     )
     print(
         f"  orders   closed +{digest['orders_closed_inserted']:>2}  "

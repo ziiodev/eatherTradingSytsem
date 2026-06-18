@@ -8,14 +8,16 @@ Mounts:
 * ``/api/me/*``                    — see :mod:`aether_api.routers.me`.
 * ``/api/me/mfa/*``                — see :mod:`aether_api.routers.me_mfa`.
 * ``/api/me/audit-log``            — see :mod:`aether_api.routers.audit_log`.
-* ``/api/projects/*``              — see :mod:`aether_api.routers.projects`.
+* ``/api/exchanges/*``             — see :mod:`aether_api.routers.exchanges`.
+* ``/api/accounts/*``              — see :mod:`aether_api.routers.accounts`.
+* ``/api/pairs/*``                 — see :mod:`aether_api.routers.pairs`.
 * ``/api/agents/*``                — see :mod:`aether_api.routers.agents`.
 * ``/api/skills/*``                — see :mod:`aether_api.routers.skills`.
 * ``/api/tools/*``                 — see :mod:`aether_api.routers.tools`.
-* ``/api/projects/{id}/q-tables``  — see :mod:`aether_api.routers.learning`.
-* ``/api/projects/{id}/episodic-memory`` — see :mod:`aether_api.routers.learning`.
-* ``/api/projects/{id}/semantic-memory`` — see :mod:`aether_api.routers.learning`.
-* ``/api/projects/{id}/sleep-runs/{run_id}/report`` — see :mod:`aether_api.sleep.routes`.
+* ``/api/pairs/{id}/q-tables``     — see :mod:`aether_api.routers.learning`.
+* ``/api/pairs/{id}/episodic-memory`` — see :mod:`aether_api.routers.learning`.
+* ``/api/pairs/{id}/semantic-memory`` — see :mod:`aether_api.routers.learning`.
+* ``/api/pairs/{id}/sleep-runs/{run_id}/report`` — see :mod:`aether_api.sleep.routes`.
 * OpenAPI at ``/openapi.json`` (default location).
 
 Run with::
@@ -43,15 +45,17 @@ from aether_api.core.logging import setup_logging
 from aether_api.core.middleware import RequestIDMiddleware
 from aether_api.core.observability import init_observability
 from aether_api.core.settings import get_settings
+from aether_api.routers.accounts import router as accounts_router
 from aether_api.routers.agents import router as agents_router
 from aether_api.routers.audit_log import router as audit_log_router
 from aether_api.routers.chat import router as chat_router
+from aether_api.routers.exchanges import router as exchanges_router
 from aether_api.routers.learning import router as learning_router
 from aether_api.routers.me import router as me_router
 from aether_api.routers.me_mfa import router as me_mfa_router
 from aether_api.routers.operativa_ws import router as operativa_ws_router
-from aether_api.routers.projects import router as projects_router
-from aether_api.routers.projects_live import router as projects_live_router
+from aether_api.routers.pairs import router as pairs_router
+from aether_api.routers.pairs_live import router as pairs_live_router
 from aether_api.routers.skills import router as skills_router
 from aether_api.routers.tools import router as tools_router
 from aether_api.sleep.routes import (
@@ -261,7 +265,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         from aether_api.db.session import get_session_maker
         from aether_api.learning.recovery import LearningCache, warm_caches
-        from aether_api.models.project import Project
+        from aether_api.models.pair import Pair
 
         learning_cache = LearningCache()
         # Attach to ``app.state`` so request handlers can reach the
@@ -279,8 +283,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         session_maker = get_session_maker()
         async with session_maker() as warm_session:
-            stmt = select(Project.id, Project.user_id).where(
-                Project.status.in_(("active", "paused"))
+            stmt = select(Pair.id, Pair.user_id).where(
+                Pair.status.in_(("active", "paused"))
             )
             rows = (await warm_session.execute(stmt)).all()
             pairs: list[tuple[_uuid.UUID, _uuid.UUID]] = [
@@ -293,17 +297,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # We open a fresh session because warm_caches opens / closes
         # its own short-lived ones inside.
         if warm_result.failed:
-            from aether_api.repositories.project_repository import (
-                ProjectRepository,
+            from aether_api.repositories.pair_repository import (
+                PairRepository,
             )
 
             async with session_maker() as fail_session:
-                proj_repo = ProjectRepository(fail_session)
+                proj_repo = PairRepository(fail_session)
                 for failing_pid, err_str in warm_result.failed.items():
                     # Look up the owner so update_status_if can pass
                     # the tenant predicate.
-                    owner_stmt = select(Project.user_id).where(
-                        Project.id == failing_pid
+                    owner_stmt = select(Pair.user_id).where(
+                        Pair.id == failing_pid
                     )
                     owner = (
                         await fail_session.execute(owner_stmt)
@@ -481,10 +485,13 @@ def create_app() -> FastAPI:
     app.include_router(me_router)
     app.include_router(me_mfa_router)
     app.include_router(audit_log_router)
-    app.include_router(projects_router)
-    # Live MT5 surface (mt5-integration change). Same /api/projects prefix;
+    # Accounts-pairs hierarchy: Exchange → Account → Pair.
+    app.include_router(exchanges_router)
+    app.include_router(accounts_router)
+    app.include_router(pairs_router)
+    # Live MT5 surface (mt5-integration change). Same /api/pairs prefix;
     # FastAPI routes both routers under the same path tree.
-    app.include_router(projects_live_router)
+    app.include_router(pairs_live_router)
     app.include_router(agents_router)
     app.include_router(skills_router)
     # One-shot tools (MQL5→Py translator). Feature-flagged inside the
@@ -502,7 +509,7 @@ def create_app() -> FastAPI:
     # happen via the Sleep orchestrator and the sandboxed Worker ctx.
     app.include_router(learning_router)
     # Project Chat — operator↔assistant SSE surface. Mounted under the
-    # same /api/projects prefix; gated at the router level by
+    # same /api/pairs prefix; gated at the router level by
     # ``settings.chat_enabled`` AND a configured Anthropic API key (the
     # streaming endpoint emits 500 CHAT_NOT_CONFIGURED if the key is
     # absent). The frontend reads ``GET /api/health`` to decide whether

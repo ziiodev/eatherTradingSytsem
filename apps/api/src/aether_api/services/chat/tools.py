@@ -31,7 +31,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from aether_api.repositories.order_repository import OrderRepository
-from aether_api.repositories.project_repository import ProjectRepository
+from aether_api.repositories.pair_repository import PairRepository
 from aether_api.repositories.q_table_repository import QTableRepository
 from aether_api.repositories.semantic_memory_repository import (
     SemanticMemoryRepository,
@@ -42,8 +42,10 @@ from aether_api.services.chat.context import ChatDispatchContext
 logger = logging.getLogger(__name__)
 
 #: Keys the LLM is NEVER allowed to forge — the dispatcher drops them.
+#: ``project_id`` retained alongside ``pair_id`` so a forged legacy key
+#: is still stripped defensively.
 _TENANCY_KEYS: frozenset[str] = frozenset(
-    {"user_id", "project_id", "conversation_id"}
+    {"user_id", "pair_id", "project_id", "conversation_id"}
 )
 
 
@@ -80,8 +82,8 @@ async def tool_get_project_status(
 ) -> dict[str, Any]:
     """Return high-level project header + live equity if MCP is reachable."""
     async with ctx.db_session_factory() as session:
-        repo = ProjectRepository(session)
-        project = await repo.get_for_user(ctx.user_id, ctx.project_id)
+        repo = PairRepository(session)
+        project = await repo.get_for_user(ctx.user_id, ctx.pair_id)
         if project is None:
             return {"project": None}
         return {
@@ -135,7 +137,7 @@ async def tool_get_recent_trades(
         repo = OrderRepository(session)
         rows, total = await repo.list_filtered(
             user_id=ctx.user_id,
-            project_id=ctx.project_id,
+            project_id=ctx.pair_id,
             from_date=from_date,
             limit=limit_int,
         )
@@ -192,17 +194,17 @@ async def tool_get_sleep_reports(
 
     async with ctx.db_session_factory() as session:
         repo = SleepReportRepository(session)
-        # SleepReportRepository does not expose list_for_project; query
-        # the most recent N runs for the project (tenancy enforced via
-        # the JOIN to projects.user_id below) and resolve their reports.
-        from aether_api.models.project import Project
+        # SleepReportRepository does not expose list_for_pair; query
+        # the most recent N runs for the pair (tenancy enforced via
+        # the JOIN to pairs.user_id below) and resolve their reports.
+        from aether_api.models.pair import Pair
 
         run_stmt = (
             select(SleepRun.id, SleepRun.phase_type, SleepRun.ended_at,
                    SleepRun.started_at, SleepRun.status)
-            .join(Project, Project.id == SleepRun.project_id)
-            .where(Project.user_id == ctx.user_id)
-            .where(SleepRun.project_id == ctx.project_id)
+            .join(Pair, Pair.id == SleepRun.pair_id)
+            .where(Pair.user_id == ctx.user_id)
+            .where(SleepRun.pair_id == ctx.pair_id)
             .order_by(
                 SleepRun.ended_at.desc().nulls_last(),
                 SleepRun.started_at.desc().nulls_last(),
@@ -250,14 +252,14 @@ async def tool_get_qtable_summary(
     async with ctx.db_session_factory() as session:
         q_repo = QTableRepository(session)
         latest = await q_repo.get_latest(
-            user_id=ctx.user_id, project_id=ctx.project_id
+            user_id=ctx.user_id, project_id=ctx.pair_id
         )
         if latest is None:
             return {"q_table": None}
 
         ep_repo = EpisodicMemoryRepository(session)
         top_states = await ep_repo.top_k_states(
-            user_id=ctx.user_id, project_id=ctx.project_id, k=10
+            user_id=ctx.user_id, project_id=ctx.pair_id, k=10
         )
 
         # Action distribution from the Q-Table data — count distinct
@@ -321,7 +323,7 @@ async def tool_get_semantic_rules(
         repo = SemanticMemoryRepository(session)
         rows = await repo.list_active(
             user_id=ctx.user_id,
-            project_id=ctx.project_id,
+            project_id=ctx.pair_id,
             rule_type=rule_type,
         )
     return {

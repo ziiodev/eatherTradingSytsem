@@ -35,9 +35,9 @@ class EpisodicMemory(Base):
         server_default=text("gen_random_uuid()"),
     )
 
-    project_id: Mapped[uuid.UUID] = mapped_column(
+    pair_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("projects.id", ondelete="CASCADE"),
+        ForeignKey("pairs.id", ondelete="CASCADE"),
         nullable=False,
     )
 
@@ -69,12 +69,12 @@ class EpisodicMemory(Base):
     )
 
     # --- Relations
-    project = relationship("Project", lazy="raise")
+    pair = relationship("Pair", lazy="raise")
     order = relationship("Order", lazy="raise")
     sleep_run = relationship("SleepRun", lazy="raise", foreign_keys=[consumed_by_sleep_run_id])
 
     def __repr__(self) -> str:  # pragma: no cover
         return (
-            f"<EpisodicMemory id={self.id} project_id={self.project_id} "
+            f"<EpisodicMemory id={self.id} pair_id={self.pair_id} "
             f"state={self.state_key} action={self.action} reward={self.reward}>"
         )

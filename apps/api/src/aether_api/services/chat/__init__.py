@@ -32,7 +32,7 @@ from aether_api.services.chat.anthropic_client import (
 )
 from aether_api.services.chat.context import (
     ChatDispatchContext,
-    build_project_snapshot,
+    build_pair_snapshot,
     build_system_prompt,
 )
 from aether_api.services.chat.stream import (
@@ -54,7 +54,7 @@ __all__ = [
     "AnthropicClientNotConfiguredError",
     "ChatDispatchContext",
     "ToolSpec",
-    "build_project_snapshot",
+    "build_pair_snapshot",
     "build_system_prompt",
     "calc_usd",
     "chat_aborted_sweeper",

@@ -29,7 +29,7 @@ const PROJECT_ID = "55555555-5555-5555-5555-555555555555";
 
 const BASE_ORDER: OperativaOrderRecord = {
   id: "11111111-1111-1111-1111-111111111111",
-  project_id: PROJECT_ID,
+  pair_id: PROJECT_ID,
   agent_id: null,
   symbol: "EURUSD",
   side: "buy",
@@ -74,7 +74,7 @@ function makeResp(
 describe("OrdersHistoryTable", () => {
   it("renders metrics block + row on first fetch (Profit Factor Infinity → ∞)", async () => {
     const fetcher = vi.fn().mockResolvedValue(makeResp([BASE_ORDER], 1));
-    render(<OrdersHistoryTable projectId={PROJECT_ID} fetcher={fetcher} />);
+    render(<OrdersHistoryTable pairId={PROJECT_ID} fetcher={fetcher} />);
 
     await waitFor(() => {
       expect(
@@ -94,7 +94,7 @@ describe("OrdersHistoryTable", () => {
 
   it("renders numeric profit factor as a two-decimal number", async () => {
     const fetcher = vi.fn().mockResolvedValue(makeResp([BASE_ORDER], 1, 1.75));
-    render(<OrdersHistoryTable projectId={PROJECT_ID} fetcher={fetcher} />);
+    render(<OrdersHistoryTable pairId={PROJECT_ID} fetcher={fetcher} />);
     await waitFor(() => {
       expect(
         screen.getByTestId("orders-history-metric-pf"),
@@ -104,7 +104,7 @@ describe("OrdersHistoryTable", () => {
 
   it("renders the empty state when items is []", async () => {
     const fetcher = vi.fn().mockResolvedValue(makeResp([], 0, 0));
-    render(<OrdersHistoryTable projectId={PROJECT_ID} fetcher={fetcher} />);
+    render(<OrdersHistoryTable pairId={PROJECT_ID} fetcher={fetcher} />);
     await waitFor(() => {
       expect(
         screen.getByTestId("orders-history-empty"),
@@ -116,13 +116,13 @@ describe("OrdersHistoryTable", () => {
     const fetcher = vi
       .fn<
         (
-          projectId: string,
+          pairId: string,
           opts: FetchOrdersOptions,
         ) => Promise<OrdersListResponse>
       >()
       .mockResolvedValue(makeResp([BASE_ORDER], 1));
 
-    render(<OrdersHistoryTable projectId={PROJECT_ID} fetcher={fetcher} />);
+    render(<OrdersHistoryTable pairId={PROJECT_ID} fetcher={fetcher} />);
     await waitFor(() => {
       expect(fetcher).toHaveBeenCalledTimes(1);
     });
@@ -148,13 +148,13 @@ describe("OrdersHistoryTable", () => {
     const fetcher = vi
       .fn<
         (
-          projectId: string,
+          pairId: string,
           opts: FetchOrdersOptions,
         ) => Promise<OrdersListResponse>
       >()
       .mockResolvedValue(makeResp([BASE_ORDER], 200));
 
-    render(<OrdersHistoryTable projectId={PROJECT_ID} fetcher={fetcher} />);
+    render(<OrdersHistoryTable pairId={PROJECT_ID} fetcher={fetcher} />);
     await waitFor(() => {
       expect(
         screen.getByTestId("orders-history-next-page"),

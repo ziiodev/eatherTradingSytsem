@@ -51,7 +51,7 @@ def _make_ctx(user_id, project_id):
     maker = get_session_maker()
     return ChatDispatchContext(
         user_id=user_id,
-        project_id=project_id,
+        pair_id=project_id,
         conversation_id=uuid.uuid4(),
         db_session_factory=maker,
         llm_client=object(),

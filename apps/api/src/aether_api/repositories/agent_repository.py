@@ -9,7 +9,7 @@ from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from aether_api.models.agent import Agent
-from aether_api.models.project import Project
+from aether_api.models.pair import Pair
 from aether_api.repositories.base import BaseRepository
 
 
@@ -56,7 +56,7 @@ class AgentRepository(BaseRepository):
     ) -> Agent | None:
         """Return the agent IFF it belongs to ``user_id``, else ``None``.
 
-        Same 404-not-403 contract as projects (see project_repository).
+        Same 404-not-403 contract as projects (see pair_repository).
         """
         stmt = self._for_user(select(Agent).where(Agent.id == agent_id), user_id)
         result = await self.session.execute(stmt)
@@ -80,34 +80,34 @@ class AgentRepository(BaseRepository):
         # One row per (agent_id, project_id) pair where the project
         # references the agent in any of the six FK slots. Then
         # GROUP BY agent_id and COUNT(DISTINCT project_id).
-        orchestrator_match = Project.orchestrator_agent_id.in_(agent_ids)
-        investigator_match = Project.investigator_agent_id.in_(agent_ids)
-        marker_match = Project.marker_agent_id.in_(agent_ids)
-        worker_match = Project.worker_agent_id.in_(agent_ids)
-        tutor_match = Project.tutor_agent_id.in_(agent_ids)
-        auditor_match = Project.auditor_agent_id.in_(agent_ids)
+        orchestrator_match = Pair.orchestrator_agent_id.in_(agent_ids)
+        investigator_match = Pair.investigator_agent_id.in_(agent_ids)
+        marker_match = Pair.marker_agent_id.in_(agent_ids)
+        worker_match = Pair.worker_agent_id.in_(agent_ids)
+        tutor_match = Pair.tutor_agent_id.in_(agent_ids)
+        auditor_match = Pair.auditor_agent_id.in_(agent_ids)
 
         agent_id_expr = case(
             (
-                Project.orchestrator_agent_id.in_(agent_ids),
-                Project.orchestrator_agent_id,
+                Pair.orchestrator_agent_id.in_(agent_ids),
+                Pair.orchestrator_agent_id,
             ),
             (
-                Project.investigator_agent_id.in_(agent_ids),
-                Project.investigator_agent_id,
+                Pair.investigator_agent_id.in_(agent_ids),
+                Pair.investigator_agent_id,
             ),
             (
-                Project.marker_agent_id.in_(agent_ids),
-                Project.marker_agent_id,
+                Pair.marker_agent_id.in_(agent_ids),
+                Pair.marker_agent_id,
             ),
-            (Project.worker_agent_id.in_(agent_ids), Project.worker_agent_id),
-            (Project.tutor_agent_id.in_(agent_ids), Project.tutor_agent_id),
-            (Project.auditor_agent_id.in_(agent_ids), Project.auditor_agent_id),
+            (Pair.worker_agent_id.in_(agent_ids), Pair.worker_agent_id),
+            (Pair.tutor_agent_id.in_(agent_ids), Pair.tutor_agent_id),
+            (Pair.auditor_agent_id.in_(agent_ids), Pair.auditor_agent_id),
         ).label("agent_id")
 
         stmt = (
-            select(agent_id_expr, func.count(func.distinct(Project.id)))
-            .where(Project.user_id == user_id)
+            select(agent_id_expr, func.count(func.distinct(Pair.id)))
+            .where(Pair.user_id == user_id)
             .where(
                 or_(
                     orchestrator_match,
@@ -137,16 +137,16 @@ class AgentRepository(BaseRepository):
         Worker, Tutor, Auditor (migration 0012 added Marker + Tutor).
         """
         stmt = (
-            select(Project.id)
-            .where(Project.user_id == user_id)
+            select(Pair.id)
+            .where(Pair.user_id == user_id)
             .where(
                 or_(
-                    Project.orchestrator_agent_id == agent_id,
-                    Project.investigator_agent_id == agent_id,
-                    Project.marker_agent_id == agent_id,
-                    Project.worker_agent_id == agent_id,
-                    Project.tutor_agent_id == agent_id,
-                    Project.auditor_agent_id == agent_id,
+                    Pair.orchestrator_agent_id == agent_id,
+                    Pair.investigator_agent_id == agent_id,
+                    Pair.marker_agent_id == agent_id,
+                    Pair.worker_agent_id == agent_id,
+                    Pair.tutor_agent_id == agent_id,
+                    Pair.auditor_agent_id == agent_id,
                 )
             )
         )

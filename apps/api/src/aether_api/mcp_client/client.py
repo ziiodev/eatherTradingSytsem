@@ -29,7 +29,7 @@ from typing import Any
 
 import httpx
 
-from aether_api.models.project import Project
+from aether_api.models.pair import Pair
 
 from .errors import CharterViolation, MCPClientError, MCPUnreachable
 
@@ -38,7 +38,7 @@ from .errors import CharterViolation, MCPClientError, MCPUnreachable
 DEFAULT_TIMEOUT_SECONDS: float = 10.0
 
 
-def _resolve_endpoint(project: Project) -> str:
+def _resolve_endpoint(project: Pair) -> str:
     """Build the JSON-RPC POST URL for ``project``.
 
     ``mcp_url`` is the scheme+host (e.g. ``http://proj-123.docker``) and
@@ -77,7 +77,7 @@ class MCPClient:
 
     def __init__(
         self,
-        project: Project,
+        project: Pair,
         *,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
     ) -> None:
@@ -184,7 +184,7 @@ class MCPClient:
         return await self._rpc("mt5_close_order", payload)
 
 
-def get_mcp_client(project: Project, *, timeout: float = DEFAULT_TIMEOUT_SECONDS) -> MCPClient:
+def get_mcp_client(project: Pair, *, timeout: float = DEFAULT_TIMEOUT_SECONDS) -> MCPClient:
     """Return a fresh :class:`MCPClient` for ``project``.
 
     Placeholder for future per-process pooling; today this is a thin

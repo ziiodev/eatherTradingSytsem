@@ -43,26 +43,26 @@ from aether_api.docker_control.docker_lifecycle_transitions import (
     assert_event,
 )
 from aether_api.docker_control.events_repository import ContainerEventsRepository
-from aether_api.models.project import Project
-from aether_api.repositories.project_repository import ProjectRepository
-from aether_api.services.project_lifecycle import InvalidTransition
+from aether_api.models.pair import Pair
+from aether_api.repositories.pair_repository import PairRepository
+from aether_api.services.pair_lifecycle import InvalidTransition
 
 logger = logging.getLogger(__name__)
 
 
-async def _projects_with_container(session: AsyncSession) -> list[Project]:
+async def _pairs_with_container(session: AsyncSession) -> list[Pair]:
     """Return every project row with a non-null ``container_id``.
 
     Cross-tenant by design: the reconciler is a system process, not a
     request handler. It does NOT go through the tenant filter — it
     operates on the global universe of project rows.
     """
-    stmt = select(Project).where(Project.container_id.is_not(None))
+    stmt = select(Pair).where(Pair.container_id.is_not(None))
     result = await session.execute(stmt)
     return list(result.scalars().all())
 
 
-async def _check_one(session: AsyncSession, project: Project) -> dict[str, Any]:
+async def _check_one(session: AsyncSession, project: Pair) -> dict[str, Any]:
     """Reconcile a single project. Returns a small summary dict."""
     docker = get_docker()
     summary: dict[str, Any] = {
@@ -87,7 +87,7 @@ async def _check_one(session: AsyncSession, project: Project) -> dict[str, Any]:
         )
         try:
             target = assert_event(project.status, "drift_detected")
-            repo = ProjectRepository(session)
+            repo = PairRepository(session)
             await repo.update_status_if(
                 project.user_id,
                 project.id,
@@ -123,7 +123,7 @@ async def _check_one(session: AsyncSession, project: Project) -> dict[str, Any]:
         # Daemon says it's stopped — sync the project row.
         try:
             target = assert_event(project.status, "daemon_reports_stopped")
-            repo = ProjectRepository(session)
+            repo = PairRepository(session)
             await repo.update_status_if(
                 project.user_id,
                 project.id,
@@ -160,8 +160,8 @@ async def sweep_once() -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     maker = get_session_maker()
     async with maker() as session:
-        projects = await _projects_with_container(session)
-        for project in projects:
+        pairs = await _pairs_with_container(session)
+        for project in pairs:
             try:
                 summary = await _check_one(session, project)
             except Exception:  # noqa: BLE001 — last-resort isolation

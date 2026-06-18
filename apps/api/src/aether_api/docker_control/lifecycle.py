@@ -8,7 +8,7 @@ Each public helper in this module:
    daemon_reports_stopped) for control-plane signals,
 3. issues the aiodocker call against the docker-socket-proxy,
 4. updates ``projects.{status, container_id, container_name}`` via
-   :meth:`ProjectRepository.update_status_if`,
+   :meth:`PairRepository.update_status_if`,
 5. writes a ``container_events`` audit row.
 
 Steps 4 + 5 share the same SQLAlchemy session — the caller commits
@@ -38,10 +38,10 @@ from aether_api.docker_control.sanitize import (
     UnsafeValueError,
     sanitize_env_value,
 )
-from aether_api.models.project import Project
+from aether_api.models.pair import Pair
 from aether_api.models.user import User
-from aether_api.repositories.project_repository import ProjectRepository
-from aether_api.services.project_lifecycle import (
+from aether_api.repositories.pair_repository import PairRepository
+from aether_api.services.pair_lifecycle import (
     InvalidTransition,
     assert_transition,
 )
@@ -74,16 +74,16 @@ class ProjectNotFoundError(LookupError):
 # ---------------------------------------------------------------------------
 async def _load_project(
     session: AsyncSession, user: User, project_id: uuid.UUID
-) -> Project:
+) -> Pair:
     """Tenant-scoped project lookup. Raises :class:`ProjectNotFoundError`."""
-    repo = ProjectRepository(session)
+    repo = PairRepository(session)
     project = await repo.get_for_user(user.id, project_id)
     if project is None:
         raise ProjectNotFoundError(str(project_id))
     return project
 
 
-def _expected_container_name(project: Project) -> str:
+def _expected_container_name(project: Pair) -> str:
     """Derive the deterministic ``aether-{short}`` container name.
 
     Sanitised through the same allowlist as Dockerfile interpolations —
@@ -96,7 +96,7 @@ def _expected_container_name(project: Project) -> str:
     return sanitize_env_value(name, field="container_name")
 
 
-def _expected_image_tag(project: Project) -> str:
+def _expected_image_tag(project: Pair) -> str:
     """Derive the deterministic image tag for ``project``."""
     short = str(project.id).split("-", 1)[0]
     return sanitize_env_value(f"aether/{short}:latest", field="image_tag")
@@ -105,7 +105,7 @@ def _expected_image_tag(project: Project) -> str:
 async def _record(
     session: AsyncSession,
     *,
-    project: Project,
+    project: Pair,
     user: User,
     action: str,
     status: str,
@@ -198,7 +198,7 @@ async def build_image(
         # state machine raise so the router maps it cleanly.
         try:
             target = assert_event(project.status, "build_failed")
-            repo = ProjectRepository(session)
+            repo = PairRepository(session)
             await repo.update_status_if(
                 user.id,
                 project.id,
@@ -270,7 +270,7 @@ async def create_container(
         )
         raise DockerControlError("create", str(exc)) from exc
 
-    repo = ProjectRepository(session)
+    repo = PairRepository(session)
     await repo.update_fields(
         user.id,
         project.id,
@@ -316,7 +316,7 @@ async def start_container(
         )
         raise DockerControlError("start", str(exc)) from exc
 
-    repo = ProjectRepository(session)
+    repo = PairRepository(session)
     await repo.update_status_if(
         user.id, project.id, from_status=project.status, to_status="active"
     )
@@ -360,7 +360,7 @@ async def pause_container(
         )
         raise DockerControlError("pause", str(exc)) from exc
 
-    repo = ProjectRepository(session)
+    repo = PairRepository(session)
     await repo.update_status_if(
         user.id, project.id, from_status=project.status, to_status="paused"
     )
@@ -404,7 +404,7 @@ async def stop_container(
         )
         raise DockerControlError("stop", str(exc)) from exc
 
-    repo = ProjectRepository(session)
+    repo = PairRepository(session)
     await repo.update_status_if(
         user.id, project.id, from_status=project.status, to_status="stopped"
     )
@@ -486,7 +486,7 @@ async def remove_container(
         )
         raise DockerControlError("remove", str(exc)) from exc
 
-    repo = ProjectRepository(session)
+    repo = PairRepository(session)
     await repo.update_fields(
         user.id,
         project.id,

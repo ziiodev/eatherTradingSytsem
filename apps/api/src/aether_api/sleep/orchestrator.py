@@ -45,13 +45,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from aether_api.core.settings import get_settings
 from aether_api.models.agent import Agent
-from aether_api.models.project import Project
+from aether_api.models.pair import Pair
 from aether_api.models.sleep_run import SleepRun
 from aether_api.repositories.agent_repository import AgentRepository
 from aether_api.repositories.episodic_memory_repository import (
     EpisodicMemoryRepository,
 )
-from aether_api.repositories.project_repository import ProjectRepository
+from aether_api.repositories.pair_repository import PairRepository
 from aether_api.sleep.classifier import classify_changes
 from aether_api.sleep.learning_step import (
     LearningStepResult,
@@ -78,7 +78,7 @@ _REFLECTION_MODE: Final[str] = "reflection"
 #: Closed enum of phase types the orchestrator accepts.
 PHASE_TYPES: Final[frozenset[str]] = frozenset({"micro", "profundo", "critico"})
 
-#: Mapping of (agent type → column on Project that holds the agent_id).
+#: Mapping of (agent type → column on Pair that holds the agent_id).
 _AGENT_TYPE_TO_FK: Final[dict[str, str]] = {
     "worker": "worker_agent_id",
     "investigator": "investigator_agent_id",
@@ -121,7 +121,7 @@ def _build_engine() -> Any:  # noqa: ANN401 — Engine is the late import
 
 
 async def _resolve_agents_for_project(
-    session: AsyncSession, project: Project
+    session: AsyncSession, project: Pair
 ) -> dict[str, Agent]:
     """Return ``{agent_type: Agent}`` for every assigned agent on the project.
 
@@ -244,7 +244,7 @@ async def _restore_project_status(
     request (e.g. the user clicked Stop while sleep was running) keeps
     its newer status — we don't second-guess the operator.
     """
-    repo = ProjectRepository(session)
+    repo = PairRepository(session)
     await repo.update_status_if(
         user_id, project_id, from_status=from_status, to_status=to_status
     )
@@ -273,7 +273,7 @@ async def run_sleep_phase(
 
     settings = get_settings()
     run_repo = SleepRunRepository(session)
-    proj_repo = ProjectRepository(session)
+    proj_repo = PairRepository(session)
 
     project = await proj_repo.get_for_user(user_id, project_id)
     if project is None:
@@ -363,7 +363,7 @@ async def _execute_run(
     session: AsyncSession,
     *,
     engine: Any,
-    project: Project,
+    project: Pair,
     run: SleepRun,
     previous_status: str,
     phase_type: str,
@@ -538,9 +538,9 @@ async def _execute_run(
     from sqlalchemy import update as _sql_update
 
     await session.execute(
-        _sql_update(Project)
-        .where(Project.id == project.id)
-        .where(Project.user_id == project.user_id)
+        _sql_update(Pair)
+        .where(Pair.id == project.id)
+        .where(Pair.user_id == project.user_id)
         .values(last_sleep_at=datetime.now(tz=UTC).replace(tzinfo=None))
     )
 
@@ -573,7 +573,7 @@ async def _execute_run(
 async def _run_learning_step(
     session: AsyncSession,
     *,
-    project: Project,
+    project: Pair,
     run: SleepRun,
     current_snapshot: dict[str, Any],
     proposed_snapshot: dict[str, Any],

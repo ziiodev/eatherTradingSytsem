@@ -11,14 +11,14 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 
-import type { ProjectDetail } from "@/lib/projects";
+import type { PairDetail } from "@/lib/pairs";
 
-vi.mock("@/lib/projects", async (importOriginal) => {
+vi.mock("@/lib/pairs", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
-    getProject: vi.fn(),
-    patchProject: vi.fn(),
+    getPair: vi.fn(),
+    patchPair: vi.fn(),
   };
 });
 
@@ -45,12 +45,14 @@ vi.mock("@/components/projects/SuenoPanel", () => ({
 }));
 
 import { ConfiguracionTab } from "./ConfiguracionTab";
-import { getProject } from "@/lib/projects";
+import { getPair } from "@/lib/pairs";
 
-const PROJECT_ID = "11111111-1111-1111-1111-111111111111";
+const ACCOUNT_ID = "00000000-0000-0000-0000-000000000000";
+const PAIR_ID = "11111111-1111-1111-1111-111111111111";
 
-const baseProject: ProjectDetail = {
-  id: PROJECT_ID,
+const basePair: PairDetail = {
+  id: PAIR_ID,
+  account_id: ACCOUNT_ID,
   name: "Aether-EURUSD",
   symbol: "EURUSD",
   timeframe: "H1",
@@ -61,13 +63,6 @@ const baseProject: ProjectDetail = {
   docker_image: null,
   container_id: null,
   container_name: null,
-  account_login: null,
-  account_server: null,
-  broker_name: null,
-  account_credential_ref: null,
-  account_currency: null,
-  account_leverage: null,
-  account_type: null,
   commission_per_lot: null,
   commission_currency: null,
   swap_long: null,
@@ -103,11 +98,11 @@ const baseProject: ProjectDetail = {
 describe("ConfiguracionTab", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (getProject as ReturnType<typeof vi.fn>).mockResolvedValue(baseProject);
+    (getPair as ReturnType<typeof vi.fn>).mockResolvedValue(basePair);
   });
 
   it("renders the three inner sub-tab triggers once the project loads", async () => {
-    render(<ConfiguracionTab projectId={PROJECT_ID} />);
+    render(<ConfiguracionTab pairId={PAIR_ID} />);
 
     await waitFor(() => {
       expect(
@@ -124,7 +119,7 @@ describe("ConfiguracionTab", () => {
   });
 
   it("no longer mounts an Operativa sub-tab (project-operativa Phase 7.2)", async () => {
-    render(<ConfiguracionTab projectId={PROJECT_ID} />);
+    render(<ConfiguracionTab pairId={PAIR_ID} />);
     await waitFor(() => {
       expect(
         screen.getByTestId("config-subtab-general"),

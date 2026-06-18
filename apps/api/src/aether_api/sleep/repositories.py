@@ -34,7 +34,7 @@ class SleepRunRepository:
         status: str = "running",
     ) -> SleepRun:
         run = SleepRun(
-            project_id=project_id,
+            pair_id=project_id,
             user_id=user_id,
             phase_type=phase_type,
             status=status,
@@ -84,7 +84,7 @@ class SleepRunRepository:
     ) -> list[SleepRun]:
         result = await self.session.execute(
             select(SleepRun)
-            .where(SleepRun.project_id == project_id)
+            .where(SleepRun.pair_id == project_id)
             .order_by(SleepRun.started_at.desc(), SleepRun.id.desc())
             .limit(limit)
             .offset(offset)
@@ -188,7 +188,7 @@ class ConfigVersionRepository:
         parent_version_id: uuid.UUID | None = None,
     ) -> ConfigVersion:
         row = ConfigVersion(
-            project_id=project_id,
+            pair_id=project_id,
             snapshot=snapshot,
             risk_class=risk_class,
             status=status,
@@ -211,7 +211,7 @@ class ConfigVersionRepository:
     ) -> ConfigVersion | None:
         result = await self.session.execute(
             select(ConfigVersion)
-            .where(ConfigVersion.project_id == project_id)
+            .where(ConfigVersion.pair_id == project_id)
             .where(ConfigVersion.status == "applied")
             .order_by(ConfigVersion.applied_at.desc())
             .limit(1)
@@ -228,7 +228,7 @@ class ConfigVersionRepository:
     ) -> list[ConfigVersion]:
         stmt = (
             select(ConfigVersion)
-            .where(ConfigVersion.project_id == project_id)
+            .where(ConfigVersion.pair_id == project_id)
             .order_by(ConfigVersion.proposed_at.desc(), ConfigVersion.id.desc())
         )
         if status is not None:

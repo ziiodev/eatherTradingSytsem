@@ -123,7 +123,7 @@ def _make_ctx(user_id, project_id, conv_id, *, llm_client):
 
     return ChatDispatchContext(
         user_id=user_id,
-        project_id=project_id,
+        pair_id=project_id,
         conversation_id=conv_id,
         db_session_factory=get_session_maker(),
         llm_client=llm_client,

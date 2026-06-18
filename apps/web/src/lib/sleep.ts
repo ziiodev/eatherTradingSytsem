@@ -2,17 +2,17 @@
  * Typed client for the Sleep Phase + Learning HTTP surface.
  *
  * Endpoints:
- *   POST   /api/projects/{id}/sleep/trigger
- *   GET    /api/projects/{id}/sleep/runs
- *   GET    /api/projects/{id}/sleep/runs/{run_id}
- *   GET    /api/projects/{id}/sleep-runs/{run_id}/report
+ *   POST   /api/pairs/{id}/sleep/trigger
+ *   GET    /api/pairs/{id}/sleep/runs
+ *   GET    /api/pairs/{id}/sleep/runs/{run_id}
+ *   GET    /api/pairs/{id}/sleep-runs/{run_id}/report
  *   POST   /api/config-versions/{id}/approve
  *   POST   /api/config-versions/{id}/reject
  *   POST   /api/config-versions/{id}/revert
- *   GET    /api/projects/{id}/q-tables
- *   GET    /api/projects/{id}/q-tables/{version}
- *   GET    /api/projects/{id}/episodic-memory
- *   GET    /api/projects/{id}/semantic-memory
+ *   GET    /api/pairs/{id}/q-tables
+ *   GET    /api/pairs/{id}/q-tables/{version}
+ *   GET    /api/pairs/{id}/episodic-memory
+ *   GET    /api/pairs/{id}/semantic-memory
  *
  * The shapes here mirror the Pydantic DTOs in
  * `apps/api/src/aether_api/sleep/routes.py` and
@@ -46,7 +46,7 @@ export type ConfigVersionStatus =
 
 export interface SleepRunSummary {
   id: string;
-  project_id: string;
+  pair_id: string;
   phase_type: SleepPhaseType;
   status: SleepRunStatus;
   started_at: string | null;
@@ -65,7 +65,7 @@ export interface SleepReflectionDetail {
 
 export interface ConfigVersionDetail {
   id: string;
-  project_id: string;
+  pair_id: string;
   parent_version_id: string | null;
   sleep_run_id: string | null;
   snapshot: Record<string, unknown>;
@@ -120,17 +120,17 @@ export const RISK_CLASS_LABEL: Record<ConfigVersionRiskClass, string> = {
 };
 
 export function triggerSleepRun(
-  projectId: string,
+  pairId: string,
   phase: SleepPhaseType,
 ): Promise<TriggerSleepResponse> {
   return apiPost<TriggerSleepResponse>(
-    `/api/projects/${projectId}/sleep/trigger`,
+    `/api/pairs/${pairId}/sleep/trigger`,
     { phase_type: phase },
   );
 }
 
 export function listSleepRuns(
-  projectId: string,
+  pairId: string,
   params: { limit?: number; offset?: number } = {},
 ): Promise<SleepRunListResponse> {
   const search = new URLSearchParams();
@@ -138,16 +138,16 @@ export function listSleepRuns(
   if (params.offset !== undefined) search.set("offset", String(params.offset));
   const qs = search.toString();
   return apiGet<SleepRunListResponse>(
-    `/api/projects/${projectId}/sleep/runs${qs ? `?${qs}` : ""}`,
+    `/api/pairs/${pairId}/sleep/runs${qs ? `?${qs}` : ""}`,
   );
 }
 
 export function getSleepRun(
-  projectId: string,
+  pairId: string,
   runId: string,
 ): Promise<SleepRunDetailResponse> {
   return apiGet<SleepRunDetailResponse>(
-    `/api/projects/${projectId}/sleep/runs/${runId}`,
+    `/api/pairs/${pairId}/sleep/runs/${runId}`,
   );
 }
 
@@ -184,14 +184,14 @@ export function revertConfigVersion(
 //
 // Backend reference: ``apps/api/src/aether_api/routers/learning.py``.
 // Tenancy is enforced server-side; cross-tenant returns 404 (existence
-// non-disclosure), matching the rest of /api/projects.
+// non-disclosure), matching the rest of /api/pairs.
 // ---------------------------------------------------------------------------
 
 // Q-Tables --------------------------------------------------------------
 
 export const qTableListItemSchema = z.object({
   id: z.string().uuid(),
-  project_id: z.string().uuid(),
+  pair_id: z.string().uuid(),
   version: z.number().int().positive(),
   // Decimals come over the wire as strings to preserve precision.
   alpha_normal: z.union([z.string(), z.number()]),
@@ -220,7 +220,7 @@ export interface ListQTablesParams {
 }
 
 export async function fetchQTables(
-  projectId: string,
+  pairId: string,
   params: ListQTablesParams = {},
 ): Promise<QTableListResponse> {
   const search = new URLSearchParams();
@@ -228,17 +228,17 @@ export async function fetchQTables(
   if (params.offset !== undefined) search.set("offset", String(params.offset));
   const qs = search.toString();
   const raw = await apiGet<unknown>(
-    `/api/projects/${projectId}/q-tables${qs ? `?${qs}` : ""}`,
+    `/api/pairs/${pairId}/q-tables${qs ? `?${qs}` : ""}`,
   );
   return qTableListResponseSchema.parse(raw);
 }
 
 export async function fetchQTable(
-  projectId: string,
+  pairId: string,
   version: string | number,
 ): Promise<QTableResponse> {
   const raw = await apiGet<unknown>(
-    `/api/projects/${projectId}/q-tables/${version}`,
+    `/api/pairs/${pairId}/q-tables/${version}`,
   );
   return qTableResponseSchema.parse(raw);
 }
@@ -247,7 +247,7 @@ export async function fetchQTable(
 
 export const episodicMemorySchema = z.object({
   id: z.string().uuid(),
-  project_id: z.string().uuid(),
+  pair_id: z.string().uuid(),
   state_key: z.string(),
   action: z.string(),
   reward: z.union([z.string(), z.number()]),
@@ -276,7 +276,7 @@ export interface ListEpisodicMemoryParams {
 }
 
 export async function fetchEpisodicMemory(
-  projectId: string,
+  pairId: string,
   params: ListEpisodicMemoryParams = {},
 ): Promise<EpisodicMemoryListResponse> {
   const search = new URLSearchParams();
@@ -287,7 +287,7 @@ export async function fetchEpisodicMemory(
   if (params.offset !== undefined) search.set("offset", String(params.offset));
   const qs = search.toString();
   const raw = await apiGet<unknown>(
-    `/api/projects/${projectId}/episodic-memory${qs ? `?${qs}` : ""}`,
+    `/api/pairs/${pairId}/episodic-memory${qs ? `?${qs}` : ""}`,
   );
   return episodicMemoryListResponseSchema.parse(raw);
 }
@@ -296,7 +296,7 @@ export async function fetchEpisodicMemory(
 
 export const semanticMemorySchema = z.object({
   id: z.string().uuid(),
-  project_id: z.string().uuid(),
+  pair_id: z.string().uuid(),
   rule_type: z.string(),
   body: z.string(),
   payload: z.record(z.string(), z.unknown()).default({}),
@@ -322,7 +322,7 @@ export interface ListSemanticMemoryParams {
 }
 
 export async function fetchSemanticMemory(
-  projectId: string,
+  pairId: string,
   params: ListSemanticMemoryParams = {},
 ): Promise<SemanticMemoryListResponse> {
   const search = new URLSearchParams();
@@ -330,7 +330,7 @@ export async function fetchSemanticMemory(
   if (params.active !== undefined) search.set("active", String(params.active));
   const qs = search.toString();
   const raw = await apiGet<unknown>(
-    `/api/projects/${projectId}/semantic-memory${qs ? `?${qs}` : ""}`,
+    `/api/pairs/${pairId}/semantic-memory${qs ? `?${qs}` : ""}`,
   );
   return semanticMemoryListResponseSchema.parse(raw);
 }
@@ -347,11 +347,11 @@ export const sleepReportSchema = z.object({
 export type SleepReport = z.infer<typeof sleepReportSchema>;
 
 export async function fetchSleepReport(
-  projectId: string,
+  pairId: string,
   runId: string,
 ): Promise<SleepReport> {
   const raw = await apiGet<unknown>(
-    `/api/projects/${projectId}/sleep-runs/${runId}/report`,
+    `/api/pairs/${pairId}/sleep-runs/${runId}/report`,
   );
   return sleepReportSchema.parse(raw);
 }

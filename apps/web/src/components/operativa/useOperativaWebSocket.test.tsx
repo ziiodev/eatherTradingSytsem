@@ -321,7 +321,7 @@ describe("useOperativaWebSocket", () => {
 
     const orderFixture = {
       id: "44444444-4444-4444-4444-444444444444",
-      project_id: PROJECT_ID,
+      pair_id: PROJECT_ID,
       agent_id: null,
       symbol: "EURUSD",
       side: "buy",

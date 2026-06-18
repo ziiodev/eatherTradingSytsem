@@ -1,4 +1,4 @@
-"""``/api/projects/{project_id}/chat/*`` — operator↔Claude SSE chat surface.
+"""``/api/pairs/{pair_id}/chat/*`` — operator↔Claude SSE chat surface.
 
 Six endpoints make up the v1 (read-only-dispatch) surface:
 
@@ -11,12 +11,12 @@ Six endpoints make up the v1 (read-only-dispatch) surface:
 * ``GET    /conversations/{conv_id}/messages`` — paginated message history.
 * ``POST   /conversations/{conv_id}/messages`` — STREAM new turn (SSE).
 
-Multi-tenancy gates (see ``sdd/project-chat/spec/multi-tenancy-delta``):
+Multi-tenancy gates (see ``sdd/pair-chat/spec/multi-tenancy-delta``):
 
 * Every endpoint authenticates via :func:`current_user` and 401s on no
   session.
-* Every endpoint resolves the project through
-  :class:`ProjectRepository.get_for_user`; cross-tenant → 404 (never
+* Every endpoint resolves the pair through
+  :class:`PairRepository.get_for_user`; cross-tenant → 404 (never
   403).
 * Every conversation-scoped endpoint resolves the conversation through
   :class:`ChatConversationRepository.get`; cross-tenant or
@@ -67,7 +67,7 @@ from aether_api.repositories.chat_conversation_repository import (
     ChatConversationRepository,
 )
 from aether_api.repositories.chat_message_repository import ChatMessageRepository
-from aether_api.repositories.project_repository import ProjectRepository
+from aether_api.repositories.pair_repository import PairRepository
 from aether_api.routers.chat_dependencies import (
     ChatNotConfiguredError,
     chat_budget_check,
@@ -78,7 +78,7 @@ from aether_api.services.chat.context import ChatDispatchContext
 from aether_api.services.chat.stream import generate_sse_events
 from aether_api.tenancy.middleware import csrf_dependency, current_user
 
-router = APIRouter(prefix="/api/projects", tags=["chat"])
+router = APIRouter(prefix="/api/pairs", tags=["chat"])
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +90,7 @@ class ChatConversationOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    project_id: uuid.UUID
+    pair_id: uuid.UUID
     title: str
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -172,35 +172,35 @@ class ChatMessagePost(BaseModel):
 # ---------------------------------------------------------------------------
 # Tenant gate helpers
 # ---------------------------------------------------------------------------
-async def _ensure_project_owned(
-    session: AsyncSession, user: User, project_id: uuid.UUID
+async def _ensure_pair_owned(
+    session: AsyncSession, user: User, pair_id: uuid.UUID
 ) -> None:
-    """404 if ``project_id`` does not belong to ``user``. No existence leak."""
-    repo = ProjectRepository(session)
-    project = await repo.get_for_user(user.id, project_id)
-    if project is None:
+    """404 if ``pair_id`` does not belong to ``user``. No existence leak."""
+    repo = PairRepository(session)
+    pair = await repo.get_for_user(user.id, pair_id)
+    if pair is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="project not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="pair not found"
         )
 
 
 async def _ensure_conversation_owned(
     session: AsyncSession,
     user: User,
-    project_id: uuid.UUID,
+    pair_id: uuid.UUID,
     conversation_id: uuid.UUID,
 ) -> Any:
-    """Resolve a conversation owned by ``user`` AND attached to ``project_id``.
+    """Resolve a conversation owned by ``user`` AND attached to ``pair_id``.
 
     Returns the row; raises 404 on any miss. The pair lookup defends
     against an attacker who guesses a conversation_id from one tenant
-    and POSTs it under a different project they own (the conversation
-    might still be theirs, but it would not belong to the project they
+    and POSTs it under a different pair they own (the conversation
+    might still be theirs, but it would not belong to the pair they
     addressed).
     """
     repo = ChatConversationRepository(session)
     conv = await repo.get(user_id=user.id, conversation_id=conversation_id)
-    if conv is None or conv.project_id != project_id:
+    if conv is None or conv.pair_id != pair_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="conversation not found"
         )
@@ -238,23 +238,23 @@ async def _audit_cross_tenant(
 # Read endpoints
 # ---------------------------------------------------------------------------
 @router.get(
-    "/{project_id}/chat/conversations",
+    "/{pair_id}/chat/conversations",
     response_model=ChatConversationList,
 )
 async def list_conversations(
-    project_id: uuid.UUID,
+    pair_id: uuid.UUID,
     user: Annotated[User, Depends(current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
     archived: Annotated[bool, Query()] = False,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     offset: Annotated[int, Query(ge=0, le=10_000)] = 0,
 ) -> ChatConversationList:
-    """List the project's conversations. ``archived=False`` is the default."""
-    await _ensure_project_owned(session, user, project_id)
+    """List the pair's conversations. ``archived=False`` is the default."""
+    await _ensure_pair_owned(session, user, pair_id)
     repo = ChatConversationRepository(session)
     rows, total = await repo.list_for_project(
         user_id=user.id,
-        project_id=project_id,
+        project_id=pair_id,
         archived=archived,
         limit=limit,
         offset=offset,
@@ -266,28 +266,28 @@ async def list_conversations(
 
 
 @router.post(
-    "/{project_id}/chat/conversations",
+    "/{pair_id}/chat/conversations",
     response_model=ChatConversationOut,
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(csrf_dependency)],
 )
 async def create_conversation(
-    project_id: uuid.UUID,
+    pair_id: uuid.UUID,
     body: ChatConversationCreate,
     user: Annotated[User, Depends(current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ChatConversationOut:
-    """Create a new conversation under ``project_id``.
+    """Create a new conversation under ``pair_id``.
 
     ``title`` defaults to ``"(sin título)"`` via the DB server_default
     when the caller omits it. ``model_override`` is whitelisted at the
     DTO layer and stored in ``meta_data`` for later turns to read.
     """
-    await _ensure_project_owned(session, user, project_id)
+    await _ensure_pair_owned(session, user, pair_id)
     repo = ChatConversationRepository(session)
     conv = await repo.create(
         user_id=user.id,
-        project_id=project_id,
+        project_id=pair_id,
         title=body.title,
         model_override=body.model_override,
     )
@@ -297,19 +297,19 @@ async def create_conversation(
 
 
 @router.get(
-    "/{project_id}/chat/conversations/{conversation_id}",
+    "/{pair_id}/chat/conversations/{conversation_id}",
     response_model=ConversationDetail,
 )
 async def get_conversation(
-    project_id: uuid.UUID,
+    pair_id: uuid.UUID,
     conversation_id: uuid.UUID,
     user: Annotated[User, Depends(current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
     last: Annotated[int, Query(ge=0, le=200)] = 50,
 ) -> ConversationDetail:
     """Return the conversation header plus the last ``last`` messages."""
-    await _ensure_project_owned(session, user, project_id)
-    conv = await _ensure_conversation_owned(session, user, project_id, conversation_id)
+    await _ensure_pair_owned(session, user, pair_id)
+    conv = await _ensure_conversation_owned(session, user, pair_id, conversation_id)
 
     msg_repo = ChatMessageRepository(session)
     rows, _total = await msg_repo.list_for_conversation(
@@ -324,12 +324,12 @@ async def get_conversation(
 
 
 @router.patch(
-    "/{project_id}/chat/conversations/{conversation_id}",
+    "/{pair_id}/chat/conversations/{conversation_id}",
     response_model=ChatConversationOut,
     dependencies=[Depends(csrf_dependency)],
 )
 async def patch_conversation(
-    project_id: uuid.UUID,
+    pair_id: uuid.UUID,
     conversation_id: uuid.UUID,
     body: ChatConversationPatch,
     user: Annotated[User, Depends(current_user)],
@@ -353,10 +353,10 @@ async def patch_conversation(
 
     # Resolve first to drive 404-on-cross-tenant and to give us a row
     # for the cross-tenant audit emission if needed.
-    project_repo = ProjectRepository(session)
-    project = await project_repo.get_for_user(user.id, project_id)
-    if project is None:
-        # Cross-tenant project — audit the write attempt.
+    project_repo = PairRepository(session)
+    pair = await project_repo.get_for_user(user.id, pair_id)
+    if pair is None:
+        # Cross-tenant pair — audit the write attempt.
         await _audit_cross_tenant(
             session,
             actor_user_id=user.id,
@@ -364,12 +364,12 @@ async def patch_conversation(
             target_id=conversation_id,
         )
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="project not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="pair not found"
         )
 
     repo = ChatConversationRepository(session)
     existing = await repo.get(user_id=user.id, conversation_id=conversation_id)
-    if existing is None or existing.project_id != project_id:
+    if existing is None or existing.pair_id != pair_id:
         await _audit_cross_tenant(
             session,
             actor_user_id=user.id,
@@ -408,11 +408,11 @@ async def patch_conversation(
 
 
 @router.get(
-    "/{project_id}/chat/conversations/{conversation_id}/messages",
+    "/{pair_id}/chat/conversations/{conversation_id}/messages",
     response_model=ChatMessageList,
 )
 async def list_messages(
-    project_id: uuid.UUID,
+    pair_id: uuid.UUID,
     conversation_id: uuid.UUID,
     user: Annotated[User, Depends(current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -420,8 +420,8 @@ async def list_messages(
     offset: Annotated[int, Query(ge=0, le=10_000)] = 0,
 ) -> ChatMessageList:
     """Return the conversation's messages, chronologically ascending."""
-    await _ensure_project_owned(session, user, project_id)
-    await _ensure_conversation_owned(session, user, project_id, conversation_id)
+    await _ensure_pair_owned(session, user, pair_id)
+    await _ensure_conversation_owned(session, user, pair_id, conversation_id)
 
     repo = ChatMessageRepository(session)
     rows, total = await repo.list_for_conversation(
@@ -470,11 +470,11 @@ _SSE_HEADERS: dict[str, str] = {
 
 
 @router.post(
-    "/{project_id}/chat/conversations/{conversation_id}/messages",
+    "/{pair_id}/chat/conversations/{conversation_id}/messages",
     dependencies=[Depends(csrf_dependency)],
 )
 async def post_message(
-    project_id: uuid.UUID,
+    pair_id: uuid.UUID,
     conversation_id: uuid.UUID,
     body: ChatMessagePost,
     user: Annotated[User, Depends(current_user)],
@@ -485,7 +485,7 @@ async def post_message(
     The pipeline:
 
     1. 401 if no session (handled by :func:`current_user`).
-    2. 404 if the project or conversation does not belong to the caller.
+    2. 404 if the pair or conversation does not belong to the caller.
        Cross-tenant write attempts emit a ``chat.cross_tenant_write_denied``
        audit row.
     3. 500 ``CHAT_NOT_CONFIGURED`` if the Anthropic API key is missing.
@@ -497,9 +497,9 @@ async def post_message(
     """
     # Tenant gates first — never let the lock + budget queries reveal
     # existence of a cross-tenant conversation.
-    project_repo = ProjectRepository(session)
-    project = await project_repo.get_for_user(user.id, project_id)
-    if project is None:
+    project_repo = PairRepository(session)
+    pair = await project_repo.get_for_user(user.id, pair_id)
+    if pair is None:
         await _audit_cross_tenant(
             session,
             actor_user_id=user.id,
@@ -507,12 +507,12 @@ async def post_message(
             target_id=conversation_id,
         )
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="project not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="pair not found"
         )
 
     conv_repo = ChatConversationRepository(session)
     conv = await conv_repo.get(user_id=user.id, conversation_id=conversation_id)
-    if conv is None or conv.project_id != project_id:
+    if conv is None or conv.pair_id != pair_id:
         await _audit_cross_tenant(
             session,
             actor_user_id=user.id,
@@ -558,7 +558,7 @@ async def post_message(
 
     ctx = ChatDispatchContext(
         user_id=user.id,
-        project_id=project_id,
+        pair_id=pair_id,
         conversation_id=conversation_id,
         db_session_factory=get_session_maker(),
         llm_client=llm_client,

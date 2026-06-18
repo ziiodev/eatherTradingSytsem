@@ -61,9 +61,9 @@ class ChatActionProposal(Base):
         ForeignKey("chat_conversations.id", ondelete="CASCADE"),
         nullable=False,
     )
-    project_id: Mapped[uuid.UUID] = mapped_column(
+    pair_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("projects.id", ondelete="CASCADE"),
+        ForeignKey("pairs.id", ondelete="CASCADE"),
         nullable=False,
     )
 
@@ -102,7 +102,7 @@ class ChatActionProposal(Base):
     # --- Relations (raise on lazy access — explicit eager only)
     message = relationship("ChatMessage", lazy="raise")
     conversation = relationship("ChatConversation", lazy="raise")
-    project = relationship("Project", lazy="raise")
+    pair = relationship("Pair", lazy="raise")
 
     __table_args__ = (
         CheckConstraint(

@@ -18,7 +18,7 @@ describe("chat schemas", () => {
   it("parses a minimal conversation", () => {
     const result = conversationSchema.safeParse({
       id: "11111111-1111-1111-1111-111111111111",
-      project_id: "22222222-2222-2222-2222-222222222222",
+      pair_id: "22222222-2222-2222-2222-222222222222",
       title: "Una charla",
       created_at: "2025-01-01T00:00:00Z",
       tokens_in_total: 0,

@@ -1,16 +1,16 @@
 """``LiveBus`` — in-process pub/sub for the Operativa realtime surface.
 
 Phase 4 of the ``project-operativa`` change. The bus owns one
-``asyncio.Task`` per ACTIVE project subscription set; each task polls
-the per-project MCP endpoint on two cadences (5s for account +
+``asyncio.Task`` per ACTIVE pair subscription set; each task polls
+the per-pair MCP endpoint on two cadences (5s for account +
 positions, 30s for closed-trade reconciliation) and broadcasts diff
-events to every WebSocket subscriber attached to that project.
+events to every WebSocket subscriber attached to that pair.
 
 Topology decisions (locked in ``sdd/project-operativa/design`` #2125):
 
-* **Per-project ref-counted task**: the polling task is started on the
-  first subscriber for a project and cancelled when the LAST subscriber
-  disconnects. No idle CPU is burned for projects with zero active
+* **Per-pair ref-counted task**: the polling task is started on the
+  first subscriber for a pair and cancelled when the LAST subscriber
+  disconnects. No idle CPU is burned for pairs with zero active
   operator WS connections.
 * **Bounded per-subscriber queue** (``maxsize=100``, drop-oldest on
   overflow): a slow consumer cannot back up the producer task or
@@ -21,9 +21,9 @@ Topology decisions (locked in ``sdd/project-operativa/design`` #2125):
   just not shared. Spec ADR-001 declares this acceptable for v1.
 * **Tenancy / cross-tenant isolation**: each subscriber carries the
   ``user_id`` of the cookie that authenticated the WS upgrade. The
-  router is responsible for refusing cross-tenant project access
+  router is responsible for refusing cross-tenant pair access
   BEFORE calling :meth:`LiveBus.subscribe`; the bus assumes the
-  caller has already gated and only routes by ``project_id``.
+  caller has already gated and only routes by ``pair_id``.
 
 Public surface (the rest is internal):
 
@@ -53,7 +53,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from aether_api.mcp_client.client import MCPClient, get_mcp_client
 from aether_api.mcp_client.errors import MCPClientError, MCPUnreachable
 from aether_api.models.order import Order
-from aether_api.models.project import Project
+from aether_api.models.pair import Pair
 from aether_api.repositories.order_repository import OrderRepository
 from aether_api.services.operativa_metrics import set_mcp_status, set_ws_subscribers
 
@@ -94,7 +94,7 @@ SUBSCRIBER_QUEUE_MAXSIZE: int = 100
 
 
 SessionFactory = async_sessionmaker[AsyncSession]
-MCPClientFactory = Callable[[Project], MCPClient]
+MCPClientFactory = Callable[[Pair], MCPClient]
 
 
 @dataclass(slots=True, frozen=True)
@@ -133,17 +133,17 @@ class Subscriber:
     "merge same-conn" semantic.
     """
 
-    __slots__ = ("project_id", "user_id", "conn_handle", "queue")
+    __slots__ = ("pair_id", "user_id", "conn_handle", "queue")
 
     def __init__(
         self,
         *,
-        project_id: uuid.UUID,
+        pair_id: uuid.UUID,
         user_id: uuid.UUID,
         conn_handle: object,
         queue: asyncio.Queue[LiveEvent],
     ) -> None:
-        self.project_id = project_id
+        self.pair_id = pair_id
         self.user_id = user_id
         self.conn_handle = conn_handle
         self.queue = queue
@@ -161,11 +161,11 @@ class Subscriber:
 
 
 @dataclass
-class _ProjectSession:
-    """Bus state for one ``project_id``.
+class _PairSession:
+    """Bus state for one ``pair_id``.
 
     * ``task`` — the background asyncio.Task running
-      :meth:`LiveBus._project_loop` for this project.
+      :meth:`LiveBus._pair_loop` for this pair.
     * ``subscribers`` — ref-count set; the task is cancelled in
       :meth:`LiveBus.unsubscribe` when the last subscriber leaves.
     * ``last_account_snapshot`` / ``last_positions_snapshot`` — the
@@ -175,7 +175,7 @@ class _ProjectSession:
       transitions (DOWN → UP, UP → DOWN) emit exactly one event.
     """
 
-    project_id: uuid.UUID
+    pair_id: uuid.UUID
     task: asyncio.Task[None] | None = None
     subscribers: set[Subscriber] = field(default_factory=set)
     last_account_snapshot: dict[str, Any] | None = None
@@ -202,7 +202,7 @@ class LiveBus:
         short-lived sessions inside the polling loop — never holds a
         session across awaits beyond one DB round-trip.
     mcp_client_factory
-        Callable that returns an :class:`MCPClient` for a project. The
+        Callable that returns an :class:`MCPClient` for a pair. The
         default is :func:`aether_api.mcp_client.client.get_mcp_client`;
         tests inject a fake to assert wire behaviour without TCP.
     positions_poll_seconds, reconcile_poll_seconds, heartbeat_seconds
@@ -227,7 +227,7 @@ class LiveBus:
         self._reconcile_poll = reconcile_poll_seconds
         self._heartbeat = heartbeat_seconds
 
-        self._sessions: dict[uuid.UUID, _ProjectSession] = {}
+        self._sessions: dict[uuid.UUID, _PairSession] = {}
         # One lock guards the subscriber dictionary mutation surface.
         # Polling work itself runs without holding this lock.
         self._mutex: asyncio.Lock = asyncio.Lock()
@@ -240,56 +240,56 @@ class LiveBus:
     async def subscribe(
         self,
         *,
-        project_id: uuid.UUID,
+        pair_id: uuid.UUID,
         user_id: uuid.UUID,
         conn_handle: object,
     ) -> Subscriber:
-        """Register a new subscriber for ``project_id``.
+        """Register a new subscriber for ``pair_id``.
 
         Returns the :class:`Subscriber` handle. If this is the FIRST
-        subscriber for the project, the background polling task is
+        subscriber for the pair, the background polling task is
         started here. The caller is responsible for tenant gating
         BEFORE calling this method — the bus does not re-verify
         ownership.
         """
         queue: asyncio.Queue[LiveEvent] = asyncio.Queue(maxsize=SUBSCRIBER_QUEUE_MAXSIZE)
         subscriber = Subscriber(
-            project_id=project_id,
+            pair_id=pair_id,
             user_id=user_id,
             conn_handle=conn_handle,
             queue=queue,
         )
         async with self._mutex:
-            session = self._sessions.get(project_id)
+            session = self._sessions.get(pair_id)
             if session is None:
-                session = _ProjectSession(project_id=project_id)
-                self._sessions[project_id] = session
+                session = _PairSession(pair_id=pair_id)
+                self._sessions[pair_id] = session
             session.subscribers.add(subscriber)
             if session.task is None or session.task.done():
-                # First subscriber for this project → start the loop.
+                # First subscriber for this pair → start the loop.
                 session.task = asyncio.create_task(
-                    self._project_loop(project_id),
-                    name=f"live-bus-project-{project_id}",
+                    self._pair_loop(pair_id),
+                    name=f"live-bus-pair-{pair_id}",
                 )
             subscriber_count = len(session.subscribers)
         # Update the Prometheus gauge OUTSIDE the asyncio lock — the
         # collector is process-global and synchronous; holding the
         # mutex over it serialises subscribes pointlessly.
-        set_ws_subscribers(project_id, subscriber_count)
+        set_ws_subscribers(pair_id, subscriber_count)
         return subscriber
 
     async def unsubscribe(self, subscriber: Subscriber) -> None:
         """Remove ``subscriber`` from the bus.
 
-        Cancels the per-project polling task when the last subscriber
-        for that project disconnects. The cancellation is awaited
+        Cancels the per-pair polling task when the last subscriber
+        for that pair disconnects. The cancellation is awaited
         with :func:`contextlib.suppress` so a clean teardown never
         leaks ``CancelledError`` into the caller.
         """
         task_to_cancel: asyncio.Task[None] | None = None
         remaining: int = 0
         async with self._mutex:
-            session = self._sessions.get(subscriber.project_id)
+            session = self._sessions.get(subscriber.pair_id)
             if session is None:
                 return
             session.subscribers.discard(subscriber)
@@ -299,10 +299,10 @@ class LiveBus:
                 session.task = None
                 # Drop the session record so a fresh subscriber
                 # starts a fresh session with empty snapshots.
-                self._sessions.pop(subscriber.project_id, None)
+                self._sessions.pop(subscriber.pair_id, None)
 
         # Reflect the new subscriber count (possibly 0) into the gauge.
-        set_ws_subscribers(subscriber.project_id, remaining)
+        set_ws_subscribers(subscriber.pair_id, remaining)
 
         if task_to_cancel is not None and not task_to_cancel.done():
             task_to_cancel.cancel()
@@ -314,21 +314,21 @@ class LiveBus:
             except Exception:  # noqa: BLE001 — teardown is best-effort.
                 logger.exception(
                     "aether.live_bus.task_teardown_raised",
-                    extra={"project_id": str(subscriber.project_id)},
+                    extra={"pair_id": str(subscriber.pair_id)},
                 )
 
-    def subscriber_count(self, project_id: uuid.UUID) -> int:
-        """Return the live subscriber count for ``project_id`` (snapshot)."""
-        session = self._sessions.get(project_id)
+    def subscriber_count(self, pair_id: uuid.UUID) -> int:
+        """Return the live subscriber count for ``pair_id`` (snapshot)."""
+        session = self._sessions.get(pair_id)
         return 0 if session is None else len(session.subscribers)
 
-    def has_task(self, project_id: uuid.UUID) -> bool:
+    def has_task(self, pair_id: uuid.UUID) -> bool:
         """Return True iff a polling task is currently registered.
 
         Useful in tests that assert lifecycle ("started on first
         subscribe / cancelled on last unsubscribe").
         """
-        session = self._sessions.get(project_id)
+        session = self._sessions.get(pair_id)
         return session is not None and session.task is not None and not session.task.done()
 
     # ------------------------------------------------------------------
@@ -357,9 +357,9 @@ class LiveBus:
     # Broadcast helper
     # ------------------------------------------------------------------
 
-    def _broadcast(self, project_id: uuid.UUID, event: LiveEvent) -> None:
+    def _broadcast(self, pair_id: uuid.UUID, event: LiveEvent) -> None:
         """Push ``event`` to every subscriber's queue. Drop-oldest on full."""
-        session = self._sessions.get(project_id)
+        session = self._sessions.get(pair_id)
         if session is None:
             return
         for sub in tuple(session.subscribers):
@@ -377,8 +377,8 @@ class LiveBus:
     # Per-project polling loop
     # ------------------------------------------------------------------
 
-    async def _project_loop(self, project_id: uuid.UUID) -> None:
-        """Background task body — runs while subscribers exist for ``project_id``.
+    async def _pair_loop(self, pair_id: uuid.UUID) -> None:
+        """Background task body — runs while subscribers exist for ``pair_id``.
 
         Cadences (in one cooperative loop):
 
@@ -390,17 +390,17 @@ class LiveBus:
           dead-TCP subscriber can be cleaned up by the WS handler
           (which expects to see traffic).
         """
-        project = await self._load_project_or_none(project_id)
-        if project is None:
-            # The project was deleted between subscribe + loop start.
+        pair = await self._load_pair_or_none(pair_id)
+        if pair is None:
+            # The pair was deleted between subscribe + loop start.
             # Drop the session quietly.
             logger.info(
-                "aether.live_bus.project_missing",
-                extra={"project_id": str(project_id)},
+                "aether.live_bus.pair_missing",
+                extra={"pair_id": str(pair_id)},
             )
             return
 
-        client = self._mcp_client_factory(project)
+        client = self._mcp_client_factory(pair)
         last_reconcile = datetime.now(tz=UTC) - timedelta(seconds=self._reconcile_poll)
         last_heartbeat = datetime.now(tz=UTC) - timedelta(seconds=self._heartbeat)
 
@@ -408,16 +408,16 @@ class LiveBus:
             while True:
                 now = datetime.now(tz=UTC)
                 # --- 5s positions/account tick -----------------------
-                await self._tick_account_and_positions(project_id, client)
+                await self._tick_account_and_positions(pair_id, client)
 
                 # --- 30s reconcile tick ------------------------------
                 if (now - last_reconcile).total_seconds() >= self._reconcile_poll:
-                    await self._tick_reconcile(project_id, project, client)
+                    await self._tick_reconcile(pair_id, pair, client)
                     last_reconcile = datetime.now(tz=UTC)
 
                 # --- heartbeat ---------------------------------------
                 if (now - last_heartbeat).total_seconds() >= self._heartbeat:
-                    self._broadcast(project_id, LiveEvent(type="ping", payload={}))
+                    self._broadcast(pair_id, LiveEvent(type="ping", payload={}))
                     last_heartbeat = datetime.now(tz=UTC)
 
                 await asyncio.sleep(self._positions_poll)
@@ -425,30 +425,30 @@ class LiveBus:
             raise
         except Exception:  # noqa: BLE001 — defence in depth
             logger.exception(
-                "aether.live_bus.project_loop_unhandled",
-                extra={"project_id": str(project_id)},
+                "aether.live_bus.pair_loop_unhandled",
+                extra={"pair_id": str(pair_id)},
             )
 
-    async def _load_project_or_none(self, project_id: uuid.UUID) -> Project | None:
-        """Fetch the :class:`Project` row by id, no tenant filter.
+    async def _load_pair_or_none(self, pair_id: uuid.UUID) -> Pair | None:
+        """Fetch the :class:`Pair` row by id, no tenant filter.
 
         The bus has already been authorised by the WS router; the
         polling task itself needs the row only to construct the
         :class:`MCPClient` endpoint.
         """
         async with self._session_factory() as session:
-            project = await session.get(Project, project_id)
-            return project
+            pair = await session.get(Pair, pair_id)
+            return pair
 
     # ------------------------------------------------------------------
     # Tick: account + positions
     # ------------------------------------------------------------------
 
     async def _tick_account_and_positions(
-        self, project_id: uuid.UUID, client: MCPClient
+        self, pair_id: uuid.UUID, client: MCPClient
     ) -> None:
         """One 5s tick — pull account + positions; diff & broadcast."""
-        session = self._sessions.get(project_id)
+        session = self._sessions.get(pair_id)
         if session is None:
             return
 
@@ -462,12 +462,12 @@ class LiveBus:
             # non-2xx, malformed body — we widen-or-narrow into the
             # spec's stable shape.
             await self._handle_mcp_failure(
-                project_id, error_code=_classify_mcp_error(exc), exc=exc
+                pair_id, error_code=_classify_mcp_error(exc), exc=exc
             )
             return
         except MCPClientError as exc:
             await self._handle_mcp_failure(
-                project_id, error_code=_classify_mcp_error(exc), exc=exc
+                pair_id, error_code=_classify_mcp_error(exc), exc=exc
             )
             return
 
@@ -475,9 +475,9 @@ class LiveBus:
         # emit an "available=true" status event.
         if not session.mcp_available:
             session.mcp_available = True
-            set_mcp_status(project_id, available=True)
+            set_mcp_status(pair_id, available=True)
             self._broadcast(
-                project_id,
+                pair_id,
                 LiveEvent(
                     type="mcp_status",
                     payload={"available": True},
@@ -487,32 +487,32 @@ class LiveBus:
         if account != session.last_account_snapshot:
             session.last_account_snapshot = account
             self._broadcast(
-                project_id,
+                pair_id,
                 LiveEvent(type="account_snapshot", payload=dict(account)),
             )
         if positions != session.last_positions_snapshot:
             session.last_positions_snapshot = positions
             self._broadcast(
-                project_id,
+                pair_id,
                 LiveEvent(type="position_snapshot", payload=dict(positions)),
             )
 
     async def _handle_mcp_failure(
         self,
-        project_id: uuid.UUID,
+        pair_id: uuid.UUID,
         *,
         error_code: str,
         exc: MCPClientError,
     ) -> None:
         """Emit one mcp_status=false event on transition to DOWN."""
-        session = self._sessions.get(project_id)
+        session = self._sessions.get(pair_id)
         if session is None:
             return
         if session.mcp_available:
             session.mcp_available = False
-            set_mcp_status(project_id, available=False)
+            set_mcp_status(pair_id, available=False)
             self._broadcast(
-                project_id,
+                pair_id,
                 LiveEvent(
                     type="mcp_status",
                     payload={
@@ -525,7 +525,7 @@ class LiveBus:
         logger.warning(
             "aether.live_bus.mcp_failure",
             extra={
-                "project_id": str(project_id),
+                "pair_id": str(pair_id),
                 "error_code": error_code,
                 "message": exc.message,
             },
@@ -537,8 +537,8 @@ class LiveBus:
 
     async def _tick_reconcile(
         self,
-        project_id: uuid.UUID,
-        project: Project,
+        pair_id: uuid.UUID,
+        pair: Pair,
         client: MCPClient,
     ) -> None:
         """Pull MCP history (last 5 min) and reconcile into ``orders``."""
@@ -558,8 +558,8 @@ class LiveBus:
         async with self._session_factory() as session:
             await reconcile_history(
                 session=session,
-                user_id=project.user_id,
-                project_id=project_id,
+                user_id=pair.user_id,
+                pair_id=pair_id,
                 deals=deals,
             )
             await session.commit()
@@ -627,7 +627,7 @@ async def reconcile_history(
     *,
     session: AsyncSession,
     user_id: uuid.UUID,
-    project_id: uuid.UUID,
+    pair_id: uuid.UUID,
     deals: list[dict[str, Any]],
 ) -> int:
     """Reconcile broker-reported deals against the local ``orders`` table.
@@ -677,7 +677,7 @@ async def reconcile_history(
         # ``upsert_by_ticket`` so we can detect "already-Worker-written"
         # rows and route the broker view into ``meta_data`` exclusively.
         stmt = select(Order).where(
-            Order.project_id == project_id,
+            Order.pair_id == pair_id,
             Order.mt5_ticket == ticket_int,
         )
         existing = (await session.execute(stmt)).scalar_one_or_none()
@@ -713,7 +713,7 @@ async def reconcile_history(
             current_meta.update(broker_meta)
             await repo.upsert_by_ticket(
                 user_id=user_id,
-                project_id=project_id,
+                project_id=pair_id,
                 ticket=ticket_str,
                 fields={"meta_data": current_meta},
             )
@@ -741,7 +741,7 @@ async def reconcile_history(
 
             await repo.upsert_by_ticket(
                 user_id=user_id,
-                project_id=project_id,
+                project_id=pair_id,
                 ticket=ticket_str,
                 fields={
                     "symbol": str(deal.get("symbol") or "UNKNOWN").upper(),

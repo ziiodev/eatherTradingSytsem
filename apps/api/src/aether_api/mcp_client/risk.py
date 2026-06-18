@@ -41,7 +41,7 @@ from decimal import Decimal
 from typing import Any
 
 from aether_api.models.order import Order
-from aether_api.models.project import Project
+from aether_api.models.pair import Pair
 
 from .sessions import is_session_open
 
@@ -113,7 +113,7 @@ class RiskEnforcer:
         self,
         *,
         order: _OrderInputs,
-        project: Project,
+        project: Pair,
         account: AccountSnapshot,
         positions: list[PositionExposure],
         now_utc: datetime,

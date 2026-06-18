@@ -60,7 +60,7 @@ from aether_api.learning.metrics import (
 )
 from aether_api.learning.q_learning import q_update
 from aether_api.learning.qtable_versioning import classify_qtable_delta
-from aether_api.models.project import Project
+from aether_api.models.pair import Pair
 from aether_api.models.sleep_run import SleepRun
 from aether_api.repositories.episodic_memory_repository import (
     EpisodicMemoryRepository,
@@ -172,7 +172,7 @@ class LearningStepResult:
 # ---------------------------------------------------------------------------
 
 
-def _special_threshold(project: Project) -> float:
+def _special_threshold(project: Pair) -> float:
     """Return the |reward| threshold above which a trade is "special".
 
     Resolution order:
@@ -276,7 +276,7 @@ async def apply_q_update_pass(
     session: AsyncSession,
     *,
     user_id: uuid.UUID,
-    project: Project,
+    project: Pair,
     sleep_run: SleepRun,
     since: datetime | None,
 ) -> QUpdatePass:
@@ -420,7 +420,7 @@ async def _next_version(
 def _classify_pass(
     *,
     pass_result: QUpdatePass,
-    project: Project,
+    project: Pair,
     top_k_states: list[tuple[str, int]],
 ) -> str:
     """Run the Q-Table classifier over the pass result.
@@ -443,7 +443,7 @@ async def finalize_learning_step(
     session: AsyncSession,
     *,
     user_id: uuid.UUID,
-    project: Project,
+    project: Pair,
     sleep_run: SleepRun,
     pass_result: QUpdatePass,
     risk_class: str,

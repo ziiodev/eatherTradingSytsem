@@ -1,12 +1,12 @@
-"""End-to-end HTTP coverage for ``/api/projects/{id}/q-tables`` + friends.
+"""End-to-end HTTP coverage for ``/api/pairs/{id}/q-tables`` + friends.
 
 Phase 9 of sleep-learning-loop adds three GET-only routes for the
 operator dashboard:
 
-* ``GET /api/projects/{project_id}/q-tables``                — paginated
-* ``GET /api/projects/{project_id}/q-tables/{version}``      — single
-* ``GET /api/projects/{project_id}/episodic-memory``         — paginated
-* ``GET /api/projects/{project_id}/semantic-memory``         — active rules
+* ``GET /api/pairs/{project_id}/q-tables``                — paginated
+* ``GET /api/pairs/{project_id}/q-tables/{version}``      — single
+* ``GET /api/pairs/{project_id}/episodic-memory``         — paginated
+* ``GET /api/pairs/{project_id}/semantic-memory``         — active rules
 
 Every test asserts the canonical multi-tenancy invariants:
 
@@ -180,7 +180,7 @@ async def _seed_semantic_rules(
 # Q-Tables — list
 # ---------------------------------------------------------------------------
 async def test_list_q_tables_requires_auth(app_client) -> None:
-    resp = await app_client.get(f"/api/projects/{uuid.uuid4()}/q-tables")
+    resp = await app_client.get(f"/api/pairs/{uuid.uuid4()}/q-tables")
     assert resp.status_code == 401
 
 
@@ -189,7 +189,7 @@ async def test_list_q_tables_happy_path(app_client) -> None:
     project_id = await _seed_project(user)
     await _seed_q_table_versions(user_id=user.id, project_id=project_id, n=3)
 
-    resp = await app_client.get(f"/api/projects/{project_id}/q-tables")
+    resp = await app_client.get(f"/api/pairs/{project_id}/q-tables")
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["total"] == 3
@@ -206,7 +206,7 @@ async def test_list_q_tables_pagination(app_client) -> None:
     await _seed_q_table_versions(user_id=user.id, project_id=project_id, n=5)
 
     resp = await app_client.get(
-        f"/api/projects/{project_id}/q-tables?limit=2&offset=1"
+        f"/api/pairs/{project_id}/q-tables?limit=2&offset=1"
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -226,7 +226,7 @@ async def test_list_q_tables_cross_tenant_is_404(app_client) -> None:
     # Log out, log in as B, try to read A's q-tables.
     app_client.cookies.clear()
     await _login(app_client, email="b@example.com")
-    resp = await app_client.get(f"/api/projects/{project_a}/q-tables")
+    resp = await app_client.get(f"/api/pairs/{project_a}/q-tables")
     # MUST be 404, not 403 — existence is NOT disclosed.
     assert resp.status_code == 404
 
@@ -236,7 +236,7 @@ async def test_list_q_tables_cross_tenant_is_404(app_client) -> None:
 # ---------------------------------------------------------------------------
 async def test_get_q_table_version_requires_auth(app_client) -> None:
     resp = await app_client.get(
-        f"/api/projects/{uuid.uuid4()}/q-tables/1"
+        f"/api/pairs/{uuid.uuid4()}/q-tables/1"
     )
     assert resp.status_code == 401
 
@@ -246,7 +246,7 @@ async def test_get_q_table_version_happy_path(app_client) -> None:
     project_id = await _seed_project(user)
     await _seed_q_table_versions(user_id=user.id, project_id=project_id, n=2)
 
-    resp = await app_client.get(f"/api/projects/{project_id}/q-tables/2")
+    resp = await app_client.get(f"/api/pairs/{project_id}/q-tables/2")
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["version"] == 2
@@ -259,7 +259,7 @@ async def test_get_q_table_version_not_found_is_404(app_client) -> None:
     project_id = await _seed_project(user)
     await _seed_q_table_versions(user_id=user.id, project_id=project_id, n=1)
 
-    resp = await app_client.get(f"/api/projects/{project_id}/q-tables/99")
+    resp = await app_client.get(f"/api/pairs/{project_id}/q-tables/99")
     assert resp.status_code == 404
 
 
@@ -272,7 +272,7 @@ async def test_get_q_table_version_cross_tenant_is_404(app_client) -> None:
 
     app_client.cookies.clear()
     await _login(app_client, email="b@example.com")
-    resp = await app_client.get(f"/api/projects/{project_a}/q-tables/1")
+    resp = await app_client.get(f"/api/pairs/{project_a}/q-tables/1")
     assert resp.status_code == 404
 
 
@@ -281,7 +281,7 @@ async def test_get_q_table_version_cross_tenant_is_404(app_client) -> None:
 # ---------------------------------------------------------------------------
 async def test_list_episodic_memory_requires_auth(app_client) -> None:
     resp = await app_client.get(
-        f"/api/projects/{uuid.uuid4()}/episodic-memory"
+        f"/api/pairs/{uuid.uuid4()}/episodic-memory"
     )
     assert resp.status_code == 401
 
@@ -298,7 +298,7 @@ async def test_list_episodic_memory_happy_path(app_client) -> None:
         ],
     )
 
-    resp = await app_client.get(f"/api/projects/{project_id}/episodic-memory")
+    resp = await app_client.get(f"/api/pairs/{project_id}/episodic-memory")
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["total"] == 2
@@ -320,7 +320,7 @@ async def test_list_episodic_memory_filters_by_state_key(app_client) -> None:
     )
 
     resp = await app_client.get(
-        f"/api/projects/{project_id}/episodic-memory?state_key=s1"
+        f"/api/pairs/{project_id}/episodic-memory?state_key=s1"
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -353,7 +353,7 @@ async def test_list_episodic_memory_filters_by_time_window(app_client) -> None:
     )
 
     # Default window (last 7 days) excludes the 30-day-old row.
-    resp = await app_client.get(f"/api/projects/{project_id}/episodic-memory")
+    resp = await app_client.get(f"/api/pairs/{project_id}/episodic-memory")
     assert resp.status_code == 200
     body = resp.json()
     state_keys = {item["state_key"] for item in body["items"]}
@@ -362,7 +362,7 @@ async def test_list_episodic_memory_filters_by_time_window(app_client) -> None:
     # Explicit wide ``since`` includes both.
     since = (now - timedelta(days=60)).isoformat() + "Z"
     resp = await app_client.get(
-        f"/api/projects/{project_id}/episodic-memory?since={since}"
+        f"/api/pairs/{project_id}/episodic-memory?since={since}"
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -383,7 +383,7 @@ async def test_list_episodic_memory_pagination(app_client) -> None:
     )
 
     resp = await app_client.get(
-        f"/api/projects/{project_id}/episodic-memory?limit=2&offset=0"
+        f"/api/pairs/{project_id}/episodic-memory?limit=2&offset=0"
     )
     assert resp.status_code == 200
     assert len(resp.json()["items"]) == 2
@@ -401,7 +401,7 @@ async def test_list_episodic_memory_cross_tenant_is_404(app_client) -> None:
     app_client.cookies.clear()
     await _login(app_client, email="b@example.com")
     resp = await app_client.get(
-        f"/api/projects/{project_a}/episodic-memory"
+        f"/api/pairs/{project_a}/episodic-memory"
     )
     assert resp.status_code == 404
 
@@ -411,7 +411,7 @@ async def test_list_episodic_memory_cross_tenant_is_404(app_client) -> None:
 # ---------------------------------------------------------------------------
 async def test_list_semantic_memory_requires_auth(app_client) -> None:
     resp = await app_client.get(
-        f"/api/projects/{uuid.uuid4()}/semantic-memory"
+        f"/api/pairs/{uuid.uuid4()}/semantic-memory"
     )
     assert resp.status_code == 401
 
@@ -429,7 +429,7 @@ async def test_list_semantic_memory_happy_path(app_client) -> None:
     )
 
     resp = await app_client.get(
-        f"/api/projects/{project_id}/semantic-memory"
+        f"/api/pairs/{project_id}/semantic-memory"
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -452,7 +452,7 @@ async def test_list_semantic_memory_filters_by_rule_type(app_client) -> None:
     )
 
     resp = await app_client.get(
-        f"/api/projects/{project_id}/semantic-memory?rule_type=entry"
+        f"/api/pairs/{project_id}/semantic-memory?rule_type=entry"
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -471,7 +471,7 @@ async def test_list_semantic_memory_active_false_returns_empty(app_client) -> No
     )
 
     resp = await app_client.get(
-        f"/api/projects/{project_id}/semantic-memory?active=false"
+        f"/api/pairs/{project_id}/semantic-memory?active=false"
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -491,6 +491,6 @@ async def test_list_semantic_memory_cross_tenant_is_404(app_client) -> None:
     app_client.cookies.clear()
     await _login(app_client, email="b@example.com")
     resp = await app_client.get(
-        f"/api/projects/{project_a}/semantic-memory"
+        f"/api/pairs/{project_a}/semantic-memory"
     )
     assert resp.status_code == 404

@@ -43,9 +43,9 @@ class ChatConversation(Base):
         server_default=text("gen_random_uuid()"),
     )
 
-    project_id: Mapped[uuid.UUID] = mapped_column(
+    pair_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("projects.id", ondelete="CASCADE"),
+        ForeignKey("pairs.id", ondelete="CASCADE"),
         nullable=False,
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -94,7 +94,7 @@ class ChatConversation(Base):
     )
 
     # --- Relations
-    project = relationship("Project", lazy="raise")
+    pair = relationship("Pair", lazy="raise")
     user = relationship("User", lazy="raise")
     messages = relationship(
         "ChatMessage",
@@ -115,6 +115,6 @@ class ChatConversation(Base):
 
     def __repr__(self) -> str:  # pragma: no cover
         return (
-            f"<ChatConversation id={self.id} project_id={self.project_id} "
+            f"<ChatConversation id={self.id} pair_id={self.pair_id} "
             f"title={self.title!r}>"
         )

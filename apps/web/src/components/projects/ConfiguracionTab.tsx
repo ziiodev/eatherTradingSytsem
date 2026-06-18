@@ -1,10 +1,10 @@
 "use client";
 
 /**
- * ConfiguracionTab — project configuration surface (three sub-tabs).
+ * ConfiguracionTab — pair configuration surface (three sub-tabs).
  *
  * Hosts the inner shadcn-Tabs (`general` / `infraestructura` / `sueno`)
- * and the project PATCH handling that previously lived inline in
+ * and the pair PATCH handling that previously lived inline in
  * `[id]/page.tsx`.
  *
  * Lifted into a dedicated component so it can be consumed verbatim by the
@@ -12,10 +12,10 @@
  *
  * History: the prior `operativa` sub-tab was REMOVED in `project-operativa`
  * (Phase 7.2). The realtime Operativa surface now lives as its own
- * top-level tab at `/proyectos/[id]/operativa`, so Configuración no
+ * top-level tab at `/cuentas/[accountId]/pares/[pairId]/operativa`, so Configuración no
  * longer duplicates it.
  *
- * The outer chrome (BackLink, header with project name + status, lifecycle
+ * The outer chrome (BackLink, header with pair name + status, lifecycle
  * action buttons + Eliminar, LearningNav, top-level tab navigation) lives
  * in the parent `layout.tsx` — this component is the *contents* of the
  * Configuración tab, not the page chrome.
@@ -25,11 +25,11 @@ import { useEffect, useState } from "react";
 
 import { ApiError } from "@/lib/api";
 import {
-  getProject,
-  patchProject,
-  type ProjectCreateInput,
-  type ProjectDetail,
-} from "@/lib/projects";
+  getPair,
+  patchPair,
+  type PairCreateInput,
+  type PairDetail,
+} from "@/lib/pairs";
 import { toast } from "sonner";
 import {
   Tabs,
@@ -37,19 +37,19 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import { ProjectForm } from "@/components/projects/ProjectForm";
-import { ProjectAgentsPanel } from "@/components/projects/ProjectAgentsPanel";
+import { PairForm } from "@/components/projects/PairForm";
+import { PairAgentsPanel } from "@/components/projects/PairAgentsPanel";
 import { InfraestructuraPanel } from "@/components/projects/InfraestructuraPanel";
 import { SuenoPanel } from "@/components/projects/SuenoPanel";
 
 export interface ConfiguracionTabProps {
-  projectId: string;
+  pairId: string;
 }
 
 export function ConfiguracionTab({
-  projectId,
+  pairId,
 }: ConfiguracionTabProps): React.JSX.Element {
-  const [project, setProject] = useState<ProjectDetail | null>(null);
+  const [pair, setPair] = useState<PairDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,9 +59,9 @@ export function ConfiguracionTab({
     let cancelled = false;
     const load = async (): Promise<void> => {
       try {
-        const data = await getProject(projectId);
+        const data = await getPair(pairId);
         if (cancelled) return;
-        setProject(data);
+        setPair(data);
       } catch (err) {
         if (cancelled) return;
         if (err instanceof ApiError && err.status === 404) {
@@ -81,15 +81,15 @@ export function ConfiguracionTab({
     return () => {
       cancelled = true;
     };
-  }, [projectId]);
+  }, [pairId]);
 
-  async function handlePatch(values: ProjectCreateInput): Promise<void> {
-    if (!project) return;
+  async function handlePatch(values: PairCreateInput): Promise<void> {
+    if (!pair) return;
     setSubmitting(true);
     setError(null);
     try {
-      const updated = await patchProject(project.id, values);
-      setProject(updated);
+      const updated = await patchPair(pair.id, values);
+      setPair(updated);
       toast.success("Cambios guardados");
     } catch (err) {
       if (err instanceof ApiError) {
@@ -119,10 +119,10 @@ export function ConfiguracionTab({
   }
 
   if (notFound) {
-    return <p className="text-sm">Proyecto no encontrado.</p>;
+    return <p className="text-sm">Par no encontrado.</p>;
   }
 
-  if (!project) {
+  if (!pair) {
     return (
       <p role="alert" className="text-sm text-[rgb(var(--danger))]">
         {error ?? "Error desconocido."}
@@ -131,28 +131,28 @@ export function ConfiguracionTab({
   }
 
   return (
-    <ProjectTabs
-      project={project}
+    <ConfigSubTabs
+      pair={pair}
       submitting={submitting}
       error={error}
       onSubmit={handlePatch}
-      onProjectUpdated={setProject}
+      onPairUpdated={setPair}
     />
   );
 }
 
-function ProjectTabs({
-  project,
+function ConfigSubTabs({
+  pair,
   submitting,
   error,
   onSubmit,
-  onProjectUpdated,
+  onPairUpdated,
 }: {
-  project: ProjectDetail;
+  pair: PairDetail;
   submitting: boolean;
   error: string | null;
-  onSubmit: (values: ProjectCreateInput) => Promise<void>;
-  onProjectUpdated: (next: ProjectDetail) => void;
+  onSubmit: (values: PairCreateInput) => Promise<void>;
+  onPairUpdated: (next: PairDetail) => void;
 }): React.JSX.Element {
   const [tab, setTab] = useState<
     "general" | "infraestructura" | "sueno"
@@ -175,13 +175,13 @@ function ProjectTabs({
       </TabsList>
       <TabsContent value="general">
         <div className="flex flex-col gap-4">
-          <ProjectAgentsPanel
-            project={project}
-            onProjectUpdated={onProjectUpdated}
+          <PairAgentsPanel
+            pair={pair}
+            onPairUpdated={onPairUpdated}
           />
-          <ProjectForm
+          <PairForm
             mode="edit"
-            initial={project}
+            initial={pair}
             submitting={submitting}
             error={error}
             onSubmit={onSubmit}
@@ -190,12 +190,12 @@ function ProjectTabs({
       </TabsContent>
       <TabsContent value="infraestructura">
         <InfraestructuraPanel
-          project={project}
-          onProjectUpdated={onProjectUpdated}
+          pair={pair}
+          onPairUpdated={onPairUpdated}
         />
       </TabsContent>
       <TabsContent value="sueno">
-        <SuenoPanel projectId={project.id} />
+        <SuenoPanel pairId={pair.id} />
       </TabsContent>
     </Tabs>
   );

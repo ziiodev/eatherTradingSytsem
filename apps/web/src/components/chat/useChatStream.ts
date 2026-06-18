@@ -1,6 +1,6 @@
 /**
  * ``useChatStream`` — React hook that drives one SSE-streamed assistant
- * turn against ``/api/projects/{projectId}/chat/conversations/{conversationId}/messages``.
+ * turn against ``/api/pairs/{pairId}/chat/conversations/{conversationId}/messages``.
  *
  * State machine:
  *
@@ -63,7 +63,7 @@ export interface ChatStreamError {
 }
 
 export interface UseChatStreamOptions {
-  projectId: string;
+  pairId: string;
   conversationId: string | null;
   enabled?: boolean;
 }
@@ -106,7 +106,7 @@ function toStreamMessage(row: ChatMessage): ChatStreamMessage {
 export function useChatStream(
   options: UseChatStreamOptions,
 ): UseChatStreamResult {
-  const { projectId, conversationId, enabled = true } = options;
+  const { pairId, conversationId, enabled = true } = options;
   const [messages, setMessages] = useState<ChatStreamMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<ChatStreamError | null>(null);
@@ -120,7 +120,7 @@ export function useChatStream(
   const refresh = useCallback(async (): Promise<void> => {
     if (!conversationId || !enabled) return;
     try {
-      const detail = await getConversation(projectId, conversationId, {
+      const detail = await getConversation(pairId, conversationId, {
         last: 200,
       });
       setMessages(detail.messages.map(toStreamMessage));
@@ -135,7 +135,7 @@ export function useChatStream(
             : "No se pudo cargar la conversación.",
       });
     }
-  }, [projectId, conversationId, enabled]);
+  }, [pairId, conversationId, enabled]);
 
   useEffect(() => {
     if (!conversationId || !enabled) {
@@ -270,7 +270,7 @@ export function useChatStream(
       const controller = new AbortController();
       abortRef.current = controller;
       try {
-        await postMessage(projectId, conversationId, content, {
+        await postMessage(pairId, conversationId, content, {
           onEvent: applyEvent,
           signal: controller.signal,
         });
@@ -320,7 +320,7 @@ export function useChatStream(
         abortRef.current = null;
       }
     },
-    [projectId, conversationId, enabled, streaming, applyEvent],
+    [pairId, conversationId, enabled, streaming, applyEvent],
   );
 
   // ---------------- cancelStream ----------------

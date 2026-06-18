@@ -37,7 +37,36 @@ pytestmark = pytest.mark.integration
 # -----------------------------------------------------------------------------
 # Helpers
 # -----------------------------------------------------------------------------
-EXPECTED_TABLES = {"users", "sessions", "agents", "projects"}
+# Full table set after the squashed 0001_init (accounts-pairs hierarchy).
+# ``projects`` is renamed ``pairs``; ``exchanges`` + ``accounts`` are the
+# new parent tables.
+EXPECTED_TABLES = {
+    "users",
+    "sessions",
+    "agents",
+    "skills",
+    "exchanges",
+    "accounts",
+    "pairs",
+    "audit_log",
+    "mfa_recovery_codes",
+    "agent_skills",
+    "agent_runs",
+    "container_events",
+    "orders",
+    "order_log",
+    "order_approvals",
+    "sleep_runs",
+    "sleep_reflections",
+    "config_versions",
+    "q_tables",
+    "episodic_memory",
+    "semantic_memory",
+    "sleep_reports",
+    "chat_conversations",
+    "chat_messages",
+    "chat_action_proposals",
+}
 
 
 def _sync_url_from_async(async_url: str) -> str:
@@ -88,7 +117,7 @@ def _downgrade_base(cfg: Config) -> None:
 # Tests
 # -----------------------------------------------------------------------------
 def test_upgrade_head_clean_db(database_url: str, alembic_config: Config) -> None:
-    """Running ``alembic upgrade head`` on a fresh DB creates all 4 tables.
+    """Running ``alembic upgrade head`` on a fresh DB creates all tables.
 
     Pre-condition: ``database_url`` fixture has set ``DATABASE_URL`` in the
     environment and (in the testcontainers case) brought up an empty

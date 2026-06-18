@@ -18,7 +18,7 @@ Module map:
 * :mod:`.lifecycle`          — build / create / start / pause / stop /
                               recreate / remove driving status
                               transitions via
-                              :mod:`aether_api.services.project_lifecycle`.
+                              :mod:`aether_api.services.pair_lifecycle`.
 * :mod:`.events_repository`  — writer for ``container_events`` audit rows.
 * :mod:`.reconcile`          — boot + periodic drift sweep.
 """

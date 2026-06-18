@@ -53,10 +53,10 @@ def test_promotion_counter_increments() -> None:
     increment_q_table_promotion(project_id, "alto")
 
     bajo_value = q_table_promotions_total.labels(
-        project=str(project_id), risk_class="bajo"
+        pair=str(project_id), risk_class="bajo"
     )._value.get()  # type: ignore[attr-defined]
     alto_value = q_table_promotions_total.labels(
-        project=str(project_id), risk_class="alto"
+        pair=str(project_id), risk_class="alto"
     )._value.get()  # type: ignore[attr-defined]
 
     assert bajo_value == 2.0
@@ -75,7 +75,7 @@ def test_promotion_counter_normalises_invalid_risk_class() -> None:
     increment_q_table_promotion(project_id, "rojo")  # not in the enum
 
     value = q_table_promotions_total.labels(
-        project=str(project_id), risk_class="unknown"
+        pair=str(project_id), risk_class="unknown"
     )._value.get()  # type: ignore[attr-defined]
     assert value == 1.0
 
@@ -95,7 +95,7 @@ def test_qtable_bytes_gauge_tracks_payload_size() -> None:
     expected = len(__import__("json").dumps(table, separators=(",", ":")).encode())
     assert size == expected
 
-    gauge_value = qtable_bytes.labels(project=str(project_id))._value.get()  # type: ignore[attr-defined]
+    gauge_value = qtable_bytes.labels(pair=str(project_id))._value.get()  # type: ignore[attr-defined]
     assert gauge_value == float(expected)
 
 
@@ -129,7 +129,7 @@ def test_qtable_bytes_warn_fires_when_threshold_breached(
     assert matches, f"expected {QTABLE_SIZE_LOG_KEY!r} in log records"
     record = matches[-1]
     assert record.levelno == logging.WARNING
-    assert record.project_id == str(project_id)
+    assert record.pair_id == str(project_id)
     assert record.bytes == size
     assert record.threshold == 1024
 
@@ -166,12 +166,12 @@ def test_episodic_rows_gauge_updates_within_force_flag() -> None:
 
     project_id = uuid.uuid4()
     update_episodic_rows(project_id, 17, force=True)
-    gauge_value = episodic_rows.labels(project=str(project_id))._value.get()  # type: ignore[attr-defined]
+    gauge_value = episodic_rows.labels(pair=str(project_id))._value.get()  # type: ignore[attr-defined]
     assert gauge_value == 17.0
 
     # Second write also lands (force=True bypasses the TTL).
     update_episodic_rows(project_id, 42, force=True)
-    gauge_value = episodic_rows.labels(project=str(project_id))._value.get()  # type: ignore[attr-defined]
+    gauge_value = episodic_rows.labels(pair=str(project_id))._value.get()  # type: ignore[attr-defined]
     assert gauge_value == 42.0
 
 
@@ -183,5 +183,5 @@ def test_episodic_rows_gauge_throttled_without_force() -> None:
     update_episodic_rows(project_id, 5)
     update_episodic_rows(project_id, 999)  # would be dropped by the TTL.
 
-    gauge_value = episodic_rows.labels(project=str(project_id))._value.get()  # type: ignore[attr-defined]
+    gauge_value = episodic_rows.labels(pair=str(project_id))._value.get()  # type: ignore[attr-defined]
     assert gauge_value == 5.0

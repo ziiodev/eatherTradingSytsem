@@ -28,7 +28,7 @@ async def _seed_user_project(session):
 
 async def test_approve_applies_snapshot_to_project(app_client) -> None:
     from aether_api.db.session import get_session_maker
-    from aether_api.repositories.project_repository import ProjectRepository
+    from aether_api.repositories.pair_repository import PairRepository
     from aether_api.sleep.applier import apply_version
     from aether_api.sleep.repositories import ConfigVersionRepository
 
@@ -59,7 +59,7 @@ async def test_approve_applies_snapshot_to_project(app_client) -> None:
         assert applied.decided_by == user.id
 
     async with maker() as session:
-        refreshed = await ProjectRepository(session).get_for_user(user.id, project.id)
+        refreshed = await PairRepository(session).get_for_user(user.id, project.id)
         assert refreshed is not None
         assert refreshed.worker_params == {"sma_window": 35}
         assert refreshed.notes == "post-sleep"
@@ -67,7 +67,7 @@ async def test_approve_applies_snapshot_to_project(app_client) -> None:
 
 async def test_reject_marks_rejected_without_touching_project(app_client) -> None:
     from aether_api.db.session import get_session_maker
-    from aether_api.repositories.project_repository import ProjectRepository
+    from aether_api.repositories.pair_repository import PairRepository
     from aether_api.sleep.applier import reject_version
     from aether_api.sleep.repositories import ConfigVersionRepository
 
@@ -93,14 +93,14 @@ async def test_reject_marks_rejected_without_touching_project(app_client) -> Non
         assert rejected.applied_at is None
 
     async with maker() as session:
-        refreshed = await ProjectRepository(session).get_for_user(user.id, project.id)
+        refreshed = await PairRepository(session).get_for_user(user.id, project.id)
         assert refreshed is not None
         assert refreshed.notes == original_notes
 
 
 async def test_revert_appends_new_version_pointing_at_parent(app_client) -> None:
     from aether_api.db.session import get_session_maker
-    from aether_api.repositories.project_repository import ProjectRepository
+    from aether_api.repositories.pair_repository import PairRepository
     from aether_api.sleep.applier import apply_version, revert_version
     from aether_api.sleep.repositories import ConfigVersionRepository
 
@@ -160,7 +160,7 @@ async def test_revert_appends_new_version_pointing_at_parent(app_client) -> None
         assert prior.status == "reverted"
 
         # Project state mirrors the parent snapshot.
-        refreshed = await ProjectRepository(session).get_for_user(user.id, project.id)
+        refreshed = await PairRepository(session).get_for_user(user.id, project.id)
         assert refreshed is not None
         assert refreshed.worker_params == {"sma_window": 30}
         assert refreshed.notes == "baseline"

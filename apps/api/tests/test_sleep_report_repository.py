@@ -21,13 +21,13 @@ async def _seed_two_users_with_sleep_runs():
         proj_a = await seed_project(session, owner=user_a, name="proj-a")
         proj_b = await seed_project(session, owner=user_b, name="proj-b")
         run_a = SleepRun(
-            project_id=proj_a.id,
+            pair_id=proj_a.id,
             user_id=user_a.id,
             phase_type="micro",
             status="running",
         )
         run_b = SleepRun(
-            project_id=proj_b.id,
+            pair_id=proj_b.id,
             user_id=user_b.id,
             phase_type="micro",
             status="running",

@@ -37,12 +37,13 @@ async def test_seed_dev_populates_demo_data(app_client) -> None:
     from aether_api.models.chat_message import ChatMessage
     from aether_api.models.episodic_memory import EpisodicMemory
     from aether_api.models.order import Order
-    from aether_api.models.project import Project
+    from aether_api.models.pair import Pair
     from aether_api.models.q_table import QTable
     from aether_api.models.semantic_memory import SemanticMemory
     from aether_api.models.sleep_report import SleepReport
     from aether_api.models.sleep_run import SleepRun
     from aether_api.models.user import User
+    from aether_api.models.account import Account
     from scripts.seed_dev import (
         ALICE_EMAIL,
         BOB_EMAIL,
@@ -50,6 +51,7 @@ async def test_seed_dev_populates_demo_data(app_client) -> None:
         DEMO_CHAT_TITLE,
         DEMO_PROJECT_NAME,
         EPISODIC_ROWS,
+        EXTRA_PAIRS,
         OPEN_ORDERS,
         seed_dev,
     )
@@ -65,6 +67,7 @@ async def test_seed_dev_populates_demo_data(app_client) -> None:
     assert digest["bob_created"] is True
     assert digest["project_created"] is True
     assert digest["project_status"] == "active"
+    assert digest["extra_pairs_inserted"] == len(EXTRA_PAIRS)
     assert digest["orders_closed_inserted"] == CLOSED_ORDERS
     assert digest["orders_open_inserted"] == OPEN_ORDERS
     assert digest["chat_inserted"] is True
@@ -87,18 +90,34 @@ async def test_seed_dev_populates_demo_data(app_client) -> None:
         assert set(users) == {ALICE_EMAIL, BOB_EMAIL}
 
         project = (
-            await session.execute(select(Project).where(Project.name == DEMO_PROJECT_NAME))
+            await session.execute(select(Pair).where(Pair.name == DEMO_PROJECT_NAME))
         ).scalar_one()
         assert project.status == "active"
 
+        # Every pair (the wired EURUSD demo + the extra XAUUSD pairs) hangs
+        # off ONE demo account under ONE exchange (the new hierarchy).
+        n_accounts = await session.scalar(select(func.count(Account.id)))
+        assert n_accounts == 1
+        all_pairs = (
+            (
+                await session.execute(
+                    select(Pair).where(Pair.account_id == project.account_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(all_pairs) == 1 + len(EXTRA_PAIRS)
+        assert {p.account_id for p in all_pairs} == {project.account_id}
+
         n_closed = await session.scalar(
             select(func.count(Order.id)).where(
-                Order.project_id == project.id, Order.status == "closed"
+                Order.pair_id == project.id, Order.status == "closed"
             )
         )
         n_open = await session.scalar(
             select(func.count(Order.id)).where(
-                Order.project_id == project.id, Order.status == "filled"
+                Order.pair_id == project.id, Order.status == "filled"
             )
         )
         assert n_closed == CLOSED_ORDERS
@@ -106,7 +125,7 @@ async def test_seed_dev_populates_demo_data(app_client) -> None:
 
         n_convs = await session.scalar(
             select(func.count(ChatConversation.id)).where(
-                ChatConversation.project_id == project.id,
+                ChatConversation.pair_id == project.id,
                 ChatConversation.title == DEMO_CHAT_TITLE,
             )
         )
@@ -118,36 +137,36 @@ async def test_seed_dev_populates_demo_data(app_client) -> None:
                 ChatConversation,
                 ChatConversation.id == ChatMessage.conversation_id,
             )
-            .where(ChatConversation.project_id == project.id)
+            .where(ChatConversation.pair_id == project.id)
         )
         assert n_msgs == 4
 
         n_sleep_runs = await session.scalar(
-            select(func.count(SleepRun.id)).where(SleepRun.project_id == project.id)
+            select(func.count(SleepRun.id)).where(SleepRun.pair_id == project.id)
         )
         assert n_sleep_runs == 1
         n_sleep_reports = await session.scalar(
             select(func.count(SleepReport.id))
             .join(SleepRun, SleepRun.id == SleepReport.sleep_run_id)
-            .where(SleepRun.project_id == project.id)
+            .where(SleepRun.pair_id == project.id)
         )
         assert n_sleep_reports == 1
 
         n_qtables = await session.scalar(
-            select(func.count(QTable.id)).where(QTable.project_id == project.id)
+            select(func.count(QTable.id)).where(QTable.pair_id == project.id)
         )
         assert n_qtables == 1
 
         n_semantic = await session.scalar(
             select(func.count(SemanticMemory.id)).where(
-                SemanticMemory.project_id == project.id,
+                SemanticMemory.pair_id == project.id,
                 SemanticMemory.active.is_(True),
             )
         )
         assert n_semantic == 3
 
         n_episodic = await session.scalar(
-            select(func.count(EpisodicMemory.id)).where(EpisodicMemory.project_id == project.id)
+            select(func.count(EpisodicMemory.id)).where(EpisodicMemory.pair_id == project.id)
         )
         assert n_episodic == EPISODIC_ROWS
 
@@ -159,6 +178,7 @@ async def test_seed_dev_populates_demo_data(app_client) -> None:
     assert digest2["alice_created"] is False
     assert digest2["bob_created"] is False
     assert digest2["project_created"] is False
+    assert digest2["extra_pairs_inserted"] == 0
     assert digest2["orders_closed_inserted"] == 0
     assert digest2["orders_open_inserted"] == 0
     assert digest2["chat_inserted"] is False
@@ -170,10 +190,10 @@ async def test_seed_dev_populates_demo_data(app_client) -> None:
     # --- Total row counts unchanged.
     async with maker() as session:
         total_orders = await session.scalar(
-            select(func.count(Order.id)).where(Order.project_id == project.id)
+            select(func.count(Order.id)).where(Order.pair_id == project.id)
         )
         assert total_orders == CLOSED_ORDERS + OPEN_ORDERS
         total_episodic = await session.scalar(
-            select(func.count(EpisodicMemory.id)).where(EpisodicMemory.project_id == project.id)
+            select(func.count(EpisodicMemory.id)).where(EpisodicMemory.pair_id == project.id)
         )
         assert total_episodic == EPISODIC_ROWS

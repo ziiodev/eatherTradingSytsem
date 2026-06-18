@@ -206,7 +206,7 @@ export default function AgentDetailPage(): React.JSX.Element {
       router.push("/agentes");
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
-        toast.error("El agente está referenciado por proyectos.");
+        toast.error("El agente está referenciado por pares.");
       } else {
         toast.error("No se pudo eliminar el agente");
       }

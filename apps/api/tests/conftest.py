@@ -269,7 +269,8 @@ async def _truncate_mutable_tables(migrated_db: str) -> AsyncIterator[None]:
     async with engine.begin() as conn:
         await conn.execute(
             text(
-                "TRUNCATE TABLE users, sessions, agents, projects, skills, "
+                "TRUNCATE TABLE users, sessions, agents, skills, "
+                "exchanges, accounts, pairs, "
                 "agent_skills, agent_runs, mfa_recovery_codes, "
                 "sleep_runs, sleep_reflections, config_versions, "
                 "q_tables, episodic_memory, semantic_memory, sleep_reports, "

@@ -29,7 +29,8 @@ class McpEndpoint:
     """Where the child is allowed to talk to the project's MCP server.
 
     The socket guard in :mod:`aether_api.sandbox.child` whitelists EXACTLY
-    this ``host``:``port`` pair; any other ``socket.connect`` call raises
+    this ``host``:``port`` pair (sourced from the Pair's ``mcp_url`` /
+    ``mcp_port``); any other ``socket.connect`` call raises
     :class:`aether_api.sandbox.errors.NetworkDenied`.
     """
 
@@ -51,10 +52,10 @@ class AgentContext:
 
     # --- Identity / tenancy
     user_id: str
-    project_id: str
+    pair_id: str
     agent_id: str
 
-    # --- Project shape (project_lifecycle / charter fields the user code
+    # --- Pair shape (pair_lifecycle / charter fields the user code
     # is allowed to read).
     symbol: str
     timeframe: str

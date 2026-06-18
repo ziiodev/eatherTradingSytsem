@@ -1,4 +1,4 @@
-"""Render the default Dockerfile from a :class:`Project` row.
+"""Render the default Dockerfile from a :class:`Pair` row.
 
 Pure function — no Docker side effects, no DB mutations. The contract
 the spec pins:
@@ -6,10 +6,14 @@ the spec pins:
 * Every interpolated value passes through :func:`sanitize_env_value`
   BEFORE reaching Jinja. Any character outside the strict whitelist
   raises :class:`UnsafeValueError` and the caller maps that to HTTP 422.
-* The same :class:`Project` row produces a **byte-identical** Dockerfile
+* The same :class:`Pair` row produces a **byte-identical** Dockerfile
   on every call — the Jinja2 environment is created with
   ``keep_trailing_newline=True`` and the template iterates fields in a
-  deterministic order (project_id, symbol, timeframe, broker, account).
+  deterministic order (pair_id, symbol, timeframe, broker, account).
+* Broker / account credentials moved OFF the pair onto its
+  :class:`~aether_api.models.account.Account` parent (accounts-pairs
+  hierarchy). The renderer reads them through ``pair.account``; the
+  caller MUST eager-load that relationship (``lazy="raise"``).
 * Jinja2 ``autoescape=True`` is enabled as defence-in-depth. The
   allowlist is the primary defence; autoescape catches the (theoretical)
   case where a future template author forgets to wire a new variable
@@ -28,7 +32,7 @@ from aether_api.docker_control.sanitize import (
     sanitize_env_value,
     sanitize_optional,
 )
-from aether_api.models.project import Project
+from aether_api.models.pair import Pair
 
 # Templates live next to this module to keep them inside the wheel
 # build (see hatch's wheel.packages — the src layout already includes
@@ -50,7 +54,7 @@ _ENV = Environment(
 _DEFAULT_TEMPLATE = "default.Dockerfile.j2"
 
 
-def _project_context(project: Project, *, base_image: str | None = None) -> dict[str, Any]:
+def _project_context(project: Pair, *, base_image: str | None = None) -> dict[str, Any]:
     """Build the Jinja2 context dict.
 
     Every value that lands in the template MUST pass through the
@@ -60,14 +64,19 @@ def _project_context(project: Project, *, base_image: str | None = None) -> dict
     Field ordering inside the dict is deterministic — Python 3.7+
     dictionaries preserve insertion order, which matters for the spec's
     byte-identical-render contract.
+
+    Broker / account fields are read from ``project.account`` (the
+    :class:`Account` parent) — they no longer live on the pair row. The
+    caller is responsible for eager-loading the relationship.
     """
     chosen_base = base_image or project.docker_image or "mt5-base:latest"
+    account = project.account
     return {
         "base_image": sanitize_env_value(chosen_base, field="docker_image"),
-        "project_id": sanitize_env_value(str(project.id), field="project_id"),
+        "project_id": sanitize_env_value(str(project.id), field="pair_id"),
         "project_name": sanitize_optional(
             # Names may include spaces / commas / parens per
-            # ProjectCreate._NAME_PATTERN, so we cannot reuse the
+            # PairCreate._NAME_PATTERN, so we cannot reuse the
             # strict env-value allowlist here. The label is wrapped
             # in quotes at the template level via autoescape — but
             # we also drop everything that isn't [\w_-] so the
@@ -77,11 +86,13 @@ def _project_context(project: Project, *, base_image: str | None = None) -> dict
         ),
         "symbol": sanitize_env_value(project.symbol, field="symbol"),
         "timeframe": sanitize_env_value(project.timeframe, field="timeframe"),
-        "broker_name": sanitize_optional(project.broker_name, field="broker_name"),
-        "account_login": sanitize_optional(project.account_login, field="account_login"),
-        "account_server": sanitize_optional(project.account_server, field="account_server"),
+        "broker_name": sanitize_optional(account.broker_name, field="broker_name"),
+        "account_login": sanitize_optional(account.account_login, field="account_login"),
+        "account_server": sanitize_optional(
+            account.account_server, field="account_server"
+        ),
         "account_currency": sanitize_optional(
-            project.account_currency, field="account_currency"
+            account.account_currency, field="account_currency"
         ),
         "mcp_port": project.mcp_port,  # int | None — no string interpolation
     }
@@ -104,7 +115,7 @@ def _label_safe(value: str) -> str:
 
 
 def render_default_dockerfile(
-    project: Project,
+    project: Pair,
     *,
     base_image: str | None = None,
 ) -> str:

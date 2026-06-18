@@ -16,7 +16,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any, Final
 
-from aether_api.models.project import Project
+from aether_api.models.pair import Pair
 
 #: Fields the Sleep Phase considers part of a snapshot. Order
 #: irrelevant — comparison is by dict equality, not list equality.
@@ -51,14 +51,14 @@ def _coerce(value: Any) -> Any:
     return value
 
 
-def take_snapshot(project: Project) -> dict[str, Any]:
+def take_snapshot(pair: Pair) -> dict[str, Any]:
     """Project the current row into a JSON-safe snapshot dict.
 
     Decimal columns are emitted as strings so the JSONB round-trip
     doesn't quietly lose precision (PostgreSQL JSONB stores numbers as
     arbitrary-precision but Python ``float`` cannot).
     """
-    return {field: _coerce(getattr(project, field, None)) for field in SNAPSHOT_FIELDS}
+    return {field: _coerce(getattr(pair, field, None)) for field in SNAPSHOT_FIELDS}
 
 
 def diff_keys(
@@ -70,7 +70,7 @@ def diff_keys(
 
 
 def _decode(field: str, value: Any) -> Any:
-    """Decode a snapshot value back to the type Project expects.
+    """Decode a snapshot value back to the type Pair expects.
 
     Only Decimal columns need the round-trip — everything else is plain
     JSON.
@@ -92,8 +92,8 @@ def _decode(field: str, value: Any) -> Any:
     return value
 
 
-def apply_snapshot_to_project(project: Project, snapshot: dict[str, Any]) -> None:
-    """Mutate ``project`` in-place so its mutable surface matches ``snapshot``.
+def apply_snapshot_to_project(pair: Pair, snapshot: dict[str, Any]) -> None:
+    """Mutate ``pair`` in-place so its mutable surface matches ``snapshot``.
 
     Caller is responsible for flushing the session. We deliberately do
     NOT touch any field that isn't in :data:`SNAPSHOT_FIELDS` — status,
@@ -103,7 +103,7 @@ def apply_snapshot_to_project(project: Project, snapshot: dict[str, Any]) -> Non
         if field not in snapshot:
             # Snapshot from an older schema — leave the column untouched.
             continue
-        setattr(project, field, _decode(field, snapshot[field]))
+        setattr(pair, field, _decode(field, snapshot[field]))
 
 
 __all__ = [

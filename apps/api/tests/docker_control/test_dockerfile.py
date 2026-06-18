@@ -1,14 +1,19 @@
 """Golden-file + injection-rejection tests for the Dockerfile renderer.
 
 These tests are unit-level — no DB, no settings, no Docker daemon.
-A :class:`Project` model instance is built in memory and the renderer
-returns a string. The "golden" assertion is that:
+A :class:`Pair` model instance (with an in-memory :class:`Account`
+parent carrying the broker credentials) is built in memory and the
+renderer returns a string. The "golden" assertion is that:
 
-1. Two calls with the same project produce **byte-identical** output
+1. Two calls with the same pair produce **byte-identical** output
    (the spec's determinism contract).
 2. Required header lines exist in the expected order.
-3. A project field with a forbidden character raises
+3. A pair / account field with a forbidden character raises
    :class:`UnsafeValueError`, NEVER lands in the rendered text.
+
+Broker / account credentials moved OFF the pair onto its Account parent
+(accounts-pairs hierarchy); the renderer reads them through
+``pair.account``.
 """
 
 from __future__ import annotations
@@ -18,12 +23,24 @@ import uuid
 import pytest
 from aether_api.docker_control.dockerfile import render_default_dockerfile
 from aether_api.docker_control.sanitize import UnsafeValueError
-from aether_api.models.project import Project
+from aether_api.models.account import Account
+from aether_api.models.pair import Pair
+
+#: Account-level credential fields — moved off the pair onto the Account.
+_ACCOUNT_FIELDS = frozenset(
+    {"broker_name", "account_login", "account_server", "account_currency"}
+)
 
 
-def _project(**overrides) -> Project:
-    """Build an in-memory :class:`Project` without hitting the DB."""
-    defaults = {
+def _project(**overrides) -> Pair:
+    """Build an in-memory :class:`Pair` (+ Account parent) without the DB."""
+    account_defaults = {
+        "broker_name": "ICMarkets",
+        "account_login": "demo-42",
+        "account_server": "ICMarkets-Demo",
+        "account_currency": "USD",
+    }
+    pair_defaults = {
         "id": uuid.UUID("12345678-1234-5678-1234-567812345678"),
         "user_id": uuid.uuid4(),
         "name": "Aether-EURUSD-H1",
@@ -33,13 +50,22 @@ def _project(**overrides) -> Project:
         "mcp_port": 8081,
         "docker_image": "mt5-base:latest",
         "status": "inactive",
-        "broker_name": "ICMarkets",
-        "account_login": "demo-42",
-        "account_server": "ICMarkets-Demo",
-        "account_currency": "USD",
     }
-    defaults.update(overrides)
-    return Project(**defaults)
+    for key, value in overrides.items():
+        if key in _ACCOUNT_FIELDS:
+            account_defaults[key] = value
+        else:
+            pair_defaults[key] = value
+    pair = Pair(**pair_defaults)
+    # Assign the relationship in-memory — bypasses ``lazy="raise"`` since
+    # the attribute is set directly rather than lazy-loaded.
+    pair.account = Account(
+        user_id=pair.user_id,
+        exchange_id=uuid.uuid4(),
+        name="acct-fixture",
+        **account_defaults,
+    )
+    return pair
 
 
 # ---------------------------------------------------------------------------

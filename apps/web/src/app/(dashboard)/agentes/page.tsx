@@ -139,7 +139,7 @@ export default function AgentesPage(): React.JSX.Element {
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         toast.error(
-          "El agente está referenciado por proyectos; desvincúlalos primero.",
+          "El agente está referenciado por pares; desvincúlalos primero.",
         );
       } else if (err instanceof ApiError && err.status === 404) {
         toast.error("Agente no encontrado");

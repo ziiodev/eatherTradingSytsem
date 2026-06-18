@@ -63,7 +63,7 @@ async def test_lifespan_warm_healthy_and_failing_projects(
     from aether_api.core.settings import get_settings
     from aether_api.db.session import get_session_maker
     from aether_api.main import create_app
-    from aether_api.repositories.project_repository import ProjectRepository
+    from aether_api.repositories.pair_repository import PairRepository
     from aether_api.repositories.q_table_repository import QTableRepository
     from asgi_lifespan import LifespanManager
 
@@ -117,7 +117,7 @@ async def test_lifespan_warm_healthy_and_failing_projects(
         # ------------ DB assertions -------------------------------
         maker = get_session_maker()
         async with maker() as session:
-            repo = ProjectRepository(session)
+            repo = PairRepository(session)
             healthy_proj = await repo.get_for_user(user_id, healthy_pid)
             failing_proj = await repo.get_for_user(user_id, failing_pid)
             assert healthy_proj is not None

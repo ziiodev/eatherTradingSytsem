@@ -1,12 +1,12 @@
 "use client";
 
 /**
- * Sleep Phase panel — embedded as a tab on `/proyectos/[id]`.
+ * Sleep Phase panel — embedded as a tab on `/cuentas/[accountId]/pares/[pairId]`.
  *
  * Responsibilities:
  *
  * 1. Trigger a Micro / Profundo / Crítico sleep run from the dashboard.
- * 2. List recent `sleep_runs` for the project (polled every 5 s).
+ * 2. List recent `sleep_runs` for the pair (polled every 5 s).
  * 3. Expand a run to reveal per-agent reflections + any proposed
  *    `config_versions`. Each pending version exposes Approve / Reject
  *    buttons; applied versions expose Revert.
@@ -40,10 +40,10 @@ import { Badge } from "@/components/ui/badge";
 const POLL_MS = 5000;
 
 interface Props {
-  projectId: string;
+  pairId: string;
 }
 
-export function SuenoPanel({ projectId }: Props): React.JSX.Element {
+export function SuenoPanel({ pairId }: Props): React.JSX.Element {
   const [runs, setRuns] = useState<SleepRunSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [triggering, setTriggering] = useState(false);
@@ -51,7 +51,7 @@ export function SuenoPanel({ projectId }: Props): React.JSX.Element {
 
   const refresh = useCallback(async (): Promise<void> => {
     try {
-      const data = await listSleepRuns(projectId, { limit: 50 });
+      const data = await listSleepRuns(pairId, { limit: 50 });
       setRuns(data.items);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -61,7 +61,7 @@ export function SuenoPanel({ projectId }: Props): React.JSX.Element {
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, [pairId]);
 
   useEffect(() => {
     void refresh();
@@ -72,7 +72,7 @@ export function SuenoPanel({ projectId }: Props): React.JSX.Element {
   const handleTrigger = async (phase: SleepPhaseType): Promise<void> => {
     setTriggering(true);
     try {
-      const result = await triggerSleepRun(projectId, phase);
+      const result = await triggerSleepRun(pairId, phase);
       if (result.status === "failed") {
         toast.error(`Sleep run falló: ${result.error ?? "sin detalle"}`);
       } else if (result.status === "skipped") {
@@ -132,7 +132,7 @@ export function SuenoPanel({ projectId }: Props): React.JSX.Element {
           {runs.map((run) => (
             <SleepRunRow
               key={run.id}
-              projectId={projectId}
+              pairId={pairId}
               run={run}
               expanded={expandedRunId === run.id}
               onToggle={() =>
@@ -148,7 +148,7 @@ export function SuenoPanel({ projectId }: Props): React.JSX.Element {
 }
 
 interface RowProps {
-  projectId: string;
+  pairId: string;
   run: SleepRunSummary;
   expanded: boolean;
   onToggle: () => void;
@@ -156,7 +156,7 @@ interface RowProps {
 }
 
 function SleepRunRow({
-  projectId,
+  pairId,
   run,
   expanded,
   onToggle,
@@ -171,7 +171,7 @@ function SleepRunRow({
     const load = async (): Promise<void> => {
       setLoadingDetail(true);
       try {
-        const data = await getSleepRun(projectId, run.id);
+        const data = await getSleepRun(pairId, run.id);
         if (!cancelled) setDetail(data);
       } catch {
         // Toast already handled by global handler; keep the panel quiet.
@@ -183,7 +183,7 @@ function SleepRunRow({
     return () => {
       cancelled = true;
     };
-  }, [expanded, projectId, run.id]);
+  }, [expanded, pairId, run.id]);
 
   return (
     <li className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--background-elevated))] p-3">

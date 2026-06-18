@@ -54,10 +54,16 @@ def _csrf_headers(client) -> dict[str, str]:
 
 
 async def _seed_agent_and_project(user_id: str) -> tuple[str, str]:
-    """Insert a worker agent + a project owned by ``user_id``. Return ids."""
+    """Insert a worker agent + a pair owned by ``user_id``. Return ids.
+
+    The pair now requires an Account (→ Exchange) parent
+    (accounts-pairs hierarchy), so seed that chain first.
+    """
     from aether_api.db.session import get_session_maker
+    from aether_api.models.account import Account
     from aether_api.models.agent import Agent
-    from aether_api.models.project import Project
+    from aether_api.models.exchange import Exchange
+    from aether_api.models.pair import Pair
 
     maker = get_session_maker()
     async with maker() as session:
@@ -70,18 +76,37 @@ async def _seed_agent_and_project(user_id: str) -> tuple[str, str]:
         )
         session.add(agent)
         await session.flush()
-        project = Project(
+        exchange = Exchange(
             user_id=user_id,
+            name="ex-noop",
+            code="EX-NOOP",
+            kind="broker",
+        )
+        session.add(exchange)
+        await session.flush()
+        account = Account(
+            user_id=user_id,
+            exchange_id=exchange.id,
+            name="acct-noop",
+            broker_name="ICMarkets",
+            account_currency="USD",
+            account_type="demo",
+        )
+        session.add(account)
+        await session.flush()
+        pair = Pair(
+            user_id=user_id,
+            account_id=account.id,
             name="noop",
             symbol="EURUSD",
             timeframe="H1",
             mcp_url="http://127.0.0.1:65000",
             status="active",
         )
-        session.add(project)
+        session.add(pair)
         await session.flush()
         await session.commit()
-        return str(agent.id), str(project.id)
+        return str(agent.id), str(pair.id)
 
 
 # ---------------------------------------------------------------------------
@@ -101,7 +126,7 @@ async def test_run_returns_503_when_feature_flag_off(app_client, monkeypatch) ->
 
     resp = await app_client.post(
         f"/api/agents/{agent_id}/run",
-        json={"project_id": project_id, "dry_run": True, "inputs": {}},
+        json={"pair_id": project_id, "dry_run": True, "inputs": {}},
         headers=_csrf_headers(app_client),
     )
     assert resp.status_code == 503, resp.text
@@ -125,7 +150,7 @@ async def test_run_requires_admin(app_client, monkeypatch) -> None:
 
     resp = await app_client.post(
         f"/api/agents/{agent_id}/run",
-        json={"project_id": project_id, "dry_run": True, "inputs": {}},
+        json={"pair_id": project_id, "dry_run": True, "inputs": {}},
         headers=_csrf_headers(app_client),
     )
     assert resp.status_code == 403, resp.text
@@ -153,7 +178,7 @@ async def test_run_cross_tenant_returns_404(app_client, monkeypatch) -> None:
 
     resp = await app_client.post(
         f"/api/agents/{b_agent}/run",
-        json={"project_id": b_project, "dry_run": True, "inputs": {}},
+        json={"pair_id": b_project, "dry_run": True, "inputs": {}},
         headers=_csrf_headers(app_client),
     )
     assert resp.status_code == 404, resp.text

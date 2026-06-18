@@ -46,7 +46,7 @@ class OrderAuditor:
         """
         row = OrderLog(
             order_id=order_id,
-            project_id=project_id,
+            pair_id=project_id,
             user_id=user_id,
             action=action,
             payload_in=payload_in,
@@ -72,7 +72,7 @@ class OrderAuditor:
     ) -> OrderLog:
         """Insert a single phase-1 row with ``status='blocked'`` (no phase 2)."""
         row = OrderLog(
-            project_id=project_id,
+            pair_id=project_id,
             user_id=user_id,
             action=action,
             payload_in=payload_in,

@@ -49,14 +49,14 @@ import {
 const PAGE_SIZE = 50;
 
 export interface OrdersHistoryTableProps {
-  projectId: string;
+  pairId: string;
   /**
    * Injected for tests so we don't need to round-trip through `fetch`.
    * Production callers leave undefined and the real `fetchOrders` is
    * used.
    */
   fetcher?: (
-    projectId: string,
+    pairId: string,
     opts: FetchOrdersOptions,
   ) => Promise<OrdersListResponse>;
 }
@@ -160,7 +160,7 @@ function Metric({
 }
 
 export function OrdersHistoryTable({
-  projectId,
+  pairId,
   fetcher = fetchOrders,
 }: OrdersHistoryTableProps): React.JSX.Element {
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
@@ -195,7 +195,7 @@ export function OrdersHistoryTable({
     setLoading(true);
     setError(null);
     try {
-      const result = await fetcher(projectId, fetchOpts);
+      const result = await fetcher(pairId, fetchOpts);
       setData(result);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -203,7 +203,7 @@ export function OrdersHistoryTable({
     } finally {
       setLoading(false);
     }
-  }, [fetcher, projectId, fetchOpts]);
+  }, [fetcher, pairId, fetchOpts]);
 
   useEffect(() => {
     // The fetch sets state on completion — accepted pattern in this

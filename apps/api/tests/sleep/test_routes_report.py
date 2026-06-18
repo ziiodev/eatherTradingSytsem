@@ -1,4 +1,4 @@
-"""Coverage for ``GET /api/projects/{id}/sleep-runs/{run_id}/report``.
+"""Coverage for ``GET /api/pairs/{id}/sleep-runs/{run_id}/report``.
 
 Added by sleep-learning-loop Phase 9. Read-only — writes happen
 exclusively inside the orchestrator transaction.
@@ -102,7 +102,7 @@ async def _seed_report(*, user_id: uuid.UUID, sleep_run_id: uuid.UUID) -> None:
 # ---------------------------------------------------------------------------
 async def test_get_sleep_report_requires_auth(app_client) -> None:
     resp = await app_client.get(
-        f"/api/projects/{uuid.uuid4()}/sleep-runs/{uuid.uuid4()}/report"
+        f"/api/pairs/{uuid.uuid4()}/sleep-runs/{uuid.uuid4()}/report"
     )
     assert resp.status_code == 401
 
@@ -117,7 +117,7 @@ async def test_get_sleep_report_happy_path(app_client) -> None:
     await _seed_report(user_id=user.id, sleep_run_id=run_id)
 
     resp = await app_client.get(
-        f"/api/projects/{project.id}/sleep-runs/{run_id}/report"
+        f"/api/pairs/{project.id}/sleep-runs/{run_id}/report"
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -137,7 +137,7 @@ async def test_get_sleep_report_missing_returns_404(app_client) -> None:
     run_id = await _seed_sleep_run(project=project)
 
     resp = await app_client.get(
-        f"/api/projects/{project.id}/sleep-runs/{run_id}/report"
+        f"/api/pairs/{project.id}/sleep-runs/{run_id}/report"
     )
     assert resp.status_code == 404
 
@@ -151,7 +151,7 @@ async def test_get_sleep_report_wrong_project_is_404(app_client) -> None:
     await _seed_report(user_id=user.id, sleep_run_id=run_x)
 
     resp = await app_client.get(
-        f"/api/projects/{project_y.id}/sleep-runs/{run_x}/report"
+        f"/api/pairs/{project_y.id}/sleep-runs/{run_x}/report"
     )
     assert resp.status_code == 404
 
@@ -165,7 +165,7 @@ async def test_get_sleep_report_cross_tenant_is_404(app_client) -> None:
     app_client.cookies.clear()
     await _login(app_client, email="b@example.com")
     resp = await app_client.get(
-        f"/api/projects/{project_a.id}/sleep-runs/{run_a}/report"
+        f"/api/pairs/{project_a.id}/sleep-runs/{run_a}/report"
     )
     # MUST be 404, not 403 — existence is NOT disclosed.
     assert resp.status_code == 404

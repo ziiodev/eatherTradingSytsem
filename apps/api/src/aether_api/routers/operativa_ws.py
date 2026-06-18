@@ -1,7 +1,7 @@
 """WebSocket router for the Operativa realtime surface.
 
 Phase 4 of the ``project-operativa`` change. Mounts a single WS
-endpoint at ``/api/projects/{project_id}/operativa/ws`` that pushes
+endpoint at ``/api/pairs/{pair_id}/operativa/ws`` that pushes
 account / position / mcp_status / reconciler events to the operator
 dashboard.
 
@@ -14,7 +14,7 @@ Hard rules enforced HERE (per
   ``accept()`` frame is sent.
 * Origin header MUST match ``settings.cors_allowed_origins``. A
   mismatch → close with 1008 BEFORE accept.
-* Cross-tenant access (cookie user does NOT own ``project_id``) →
+* Cross-tenant access (cookie user does NOT own ``pair_id``) →
   close with 1008 AND emit a structured WARN via
   ``log_cross_tenant_attempt``. No existence leak — the close looks
   identical to an unauthenticated request.
@@ -39,7 +39,7 @@ from aether_api.auth.tokens import verify_access_token
 from aether_api.core.settings import get_settings
 from aether_api.db.session import get_session_maker
 from aether_api.learning.audit import log_cross_tenant_attempt
-from aether_api.repositories.project_repository import ProjectRepository
+from aether_api.repositories.pair_repository import PairRepository
 from aether_api.repositories.user_repository import UserRepository
 from aether_api.services.live_bus import LiveBus, Subscriber
 
@@ -50,13 +50,13 @@ logger = logging.getLogger(__name__)
 #: WebSocket policy-violation close code per RFC 6455 §7.4.1.
 WS_CLOSE_POLICY_VIOLATION: int = 1008
 
-router = APIRouter(prefix="/api/projects", tags=["operativa-ws"])
+router = APIRouter(prefix="/api/pairs", tags=["operativa-ws"])
 
 
-@router.websocket("/{project_id}/operativa/ws")
+@router.websocket("/{pair_id}/operativa/ws")
 async def operativa_ws(
     websocket: WebSocket,
-    project_id: uuid.UUID,
+    pair_id: uuid.UUID,
 ) -> None:
     """Operativa WS endpoint.
 
@@ -68,7 +68,7 @@ async def operativa_ws(
        1008.
     3. Load the authenticated user — disabled accounts are treated
        like an invalid cookie.
-    4. Verify project ownership. Cross-tenant → close 1008 + audit
+    4. Verify pair ownership. Cross-tenant → close 1008 + audit
        log.
     5. ``websocket.accept()`` — only now is a connection established.
     6. Subscribe to the :class:`LiveBus` and forward events to the
@@ -101,7 +101,7 @@ async def operativa_ws(
         await _close_policy(websocket, reason="invalid_access_token")
         return
 
-    # ----- (3) + (4) DB-side checks (user is active, owns project) ----
+    # ----- (3) + (4) DB-side checks (user is active, owns pair) ----
     session_maker = get_session_maker()
     async with session_maker() as session:
         user = await UserRepository(session).get_by_id(user_id)
@@ -109,22 +109,22 @@ async def operativa_ws(
             await _close_policy(websocket, reason="user_disabled_or_missing")
             return
 
-        project_row = await ProjectRepository(session).get_for_user(user_id, project_id)
+        pair_row = await PairRepository(session).get_for_user(user_id, pair_id)
 
-    if project_row is None:
-        # Either the project does not exist OR the caller is not the
+    if pair_row is None:
+        # Either the pair does not exist OR the caller is not the
         # owner. Spec REQUIRES we treat the cross-tenant case as an
         # audit event. We can't distinguish from a single SELECT, but
-        # the spec only requires the audit when the project actually
+        # the spec only requires the audit when the pair actually
         # exists for ANOTHER user — emit the warn here regardless
         # (rate-limiting prevents abuse), keep the close shape stable.
         await log_cross_tenant_attempt(
             actor_user_id=user_id,
-            target_project_id=project_id,
-            table_name="projects",
+            target_project_id=pair_id,
+            table_name="pairs",
             operation="operativa_ws_subscribe",
         )
-        await _close_policy(websocket, reason="project_not_owned_or_missing")
+        await _close_policy(websocket, reason="pair_not_owned_or_missing")
         return
 
     # ----- (5) Accept + (6) subscribe to LiveBus ----------------------
@@ -138,7 +138,7 @@ async def operativa_ws(
     await websocket.accept()
     conn_handle = object()
     subscriber = await live_bus.subscribe(
-        project_id=project_id,
+        pair_id=pair_id,
         user_id=user_id,
         conn_handle=conn_handle,
     )
