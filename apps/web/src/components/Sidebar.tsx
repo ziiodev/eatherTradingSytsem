@@ -67,16 +67,27 @@ export function Sidebar({ userEmail }: SidebarProps): React.JSX.Element {
   const pathname = usePathname();
   const initials = (userEmail ?? "??").slice(0, 2).toUpperCase();
 
+  // Auto-collapse to an icon-only rail while inside the "Gestión EAs" surface
+  // (any route under `/eas`). Every other dashboard route keeps the full
+  // labelled sidebar. The collapse is purely route-derived — no manual toggle.
+  const collapsed = pathname === "/eas" || pathname.startsWith("/eas/");
+
   return (
     <aside
       aria-label="Navegación principal"
-      className="flex h-screen w-[240px] shrink-0 flex-col border-r border-[rgb(var(--border))] bg-[rgb(var(--background-elevated))]"
+      className={cn(
+        "flex h-screen shrink-0 flex-col border-r border-[rgb(var(--border))] bg-[rgb(var(--background-elevated))] transition-[width] duration-200",
+        collapsed ? "w-16" : "w-[240px]",
+      )}
     >
       {/* Brand — clickable: returns to the main dashboard view (`/`) */}
       <Link
         href="/"
         aria-label="Ir al dashboard principal"
-        className="flex h-14 items-center gap-2 px-4 transition-colors hover:bg-[rgb(var(--background))]"
+        className={cn(
+          "flex h-14 items-center gap-2 transition-colors hover:bg-[rgb(var(--background))]",
+          collapsed ? "justify-center px-0" : "px-4",
+        )}
       >
         <div
           aria-hidden
@@ -84,7 +95,9 @@ export function Sidebar({ userEmail }: SidebarProps): React.JSX.Element {
         >
           <span className="text-sm font-bold">A</span>
         </div>
-        <span className="text-base font-semibold tracking-tight">Aether</span>
+        {!collapsed && (
+          <span className="text-base font-semibold tracking-tight">Aether</span>
+        )}
       </Link>
       <Separator />
 
@@ -97,16 +110,19 @@ export function Sidebar({ userEmail }: SidebarProps): React.JSX.Element {
             <Link
               key={href}
               href={href}
+              title={collapsed ? label : undefined}
+              aria-label={collapsed ? label : undefined}
               aria-current={isActive ? "page" : undefined}
               className={cn(
-                "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+                "flex items-center rounded-md py-2 text-sm transition-colors",
+                collapsed ? "justify-center px-0" : "gap-3 px-3",
                 isActive
                   ? "bg-[rgb(var(--accent)/0.15)] text-[rgb(var(--accent))]"
                   : "text-[rgb(var(--foreground))] hover:bg-[rgb(var(--background))]",
               )}
             >
               <Icon className="h-4 w-4" aria-hidden />
-              <span>{label}</span>
+              {!collapsed && <span>{label}</span>}
             </Link>
           );
         })}
@@ -114,28 +130,37 @@ export function Sidebar({ userEmail }: SidebarProps): React.JSX.Element {
 
       {/* User dropdown stub */}
       <Separator />
-      <div className="flex items-center gap-2 p-3">
+      <div
+        className={cn(
+          "flex items-center gap-2 p-3",
+          collapsed && "justify-center",
+        )}
+      >
         <Avatar>
           <AvatarFallback>{initials}</AvatarFallback>
         </Avatar>
-        <div className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-xs font-medium">
-            {userEmail ?? "Invitado"}
-          </span>
-          <span className="text-[10px] text-[rgb(var(--foreground-muted))]">
-            Sesión activa
-          </span>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Cerrar sesión"
-          onClick={() => {
-            void logout();
-          }}
-        >
-          <LogOut className="h-4 w-4" />
-        </Button>
+        {!collapsed && (
+          <>
+            <div className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate text-xs font-medium">
+                {userEmail ?? "Invitado"}
+              </span>
+              <span className="text-[10px] text-[rgb(var(--foreground-muted))]">
+                Sesión activa
+              </span>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Cerrar sesión"
+              onClick={() => {
+                void logout();
+              }}
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
+          </>
+        )}
       </div>
     </aside>
   );

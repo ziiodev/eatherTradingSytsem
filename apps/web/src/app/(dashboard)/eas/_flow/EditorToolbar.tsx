@@ -16,6 +16,7 @@
  */
 import { useState } from "react";
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useGraphStore } from "../_stores/graphStore";
@@ -86,16 +87,19 @@ export function EditorToolbar({ eaId }: { eaId: string }) {
       : "Guardar";
 
   return (
-    <div className="border-border flex items-center gap-2 border-b px-4 py-2">
+    <div className="border-border bg-background-elevated flex h-14 items-center gap-2 border-b px-4">
       <div className="mr-auto flex items-center gap-2">
         <Link
           href="/eas"
-          title="Volver a Mis Expert Advisors"
+          title="Volver a Gestión EAs"
           className={buttonVariants({ variant: "ghost", size: "sm" })}
         >
-          ← Volver
+          <ArrowLeft className="h-4 w-4" /> Volver
         </Link>
-        <span className="text-border">|</span>
+        <span
+          aria-hidden
+          className="bg-border mx-1 h-5 w-px shrink-0"
+        />
         <EaSwitcher eaId={eaId} />
       </div>
       {saveMutation.isError && (
