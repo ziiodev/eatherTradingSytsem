@@ -8,6 +8,7 @@ import {
   LogOut,
   Settings,
   Sparkles,
+  Workflow,
   type LucideIcon,
 } from "lucide-react";
 
@@ -26,6 +27,12 @@ import { logout } from "@/lib/auth";
  * `Cuentas` (and its href `/proyectos` → `/cuentas`) per the explicit
  * user approval recorded in the change decisions. The other three entries
  * are untouched.
+ *
+ * ea-management: a FIFTH entry "Gestión EAs" (`/eas`) was added as a SANCTIONED
+ * exception to the four-entry lock (user-approved 2026-06-19). It is gated by
+ * `NEXT_PUBLIC_AETHER_EAS_ENABLED` (frontend mirror of the backend
+ * `AETHER_EAS_ENABLED` flag, default OFF): the entry is hidden unless the flag
+ * is explicitly set truthy.
  */
 interface SidebarEntry {
   href: string;
@@ -33,10 +40,22 @@ interface SidebarEntry {
   Icon: LucideIcon;
 }
 
+/**
+ * Whether the EA-management surface is enabled on the frontend. Mirrors the
+ * backend `AETHER_EAS_ENABLED` flag; OFF by default. `NEXT_PUBLIC_*` env vars
+ * are inlined at build time, so this is a static boolean per build.
+ */
+const EAS_ENABLED =
+  process.env.NEXT_PUBLIC_AETHER_EAS_ENABLED === "true" ||
+  process.env.NEXT_PUBLIC_AETHER_EAS_ENABLED === "1";
+
 const ENTRIES: ReadonlyArray<SidebarEntry> = [
   { href: "/cuentas", label: "Cuentas", Icon: LayoutGrid },
   { href: "/agentes", label: "Agentes", Icon: Bot },
   { href: "/skills", label: "Skills", Icon: Sparkles },
+  ...(EAS_ENABLED
+    ? [{ href: "/eas", label: "Gestión EAs", Icon: Workflow }]
+    : []),
   { href: "/configuracion", label: "Configuración", Icon: Settings },
 ];
 

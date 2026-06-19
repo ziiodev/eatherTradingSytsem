@@ -33,6 +33,56 @@
   --color-warning: rgb(209 154 0);
   --color-card: rgb(22 27 34);
   --color-card-foreground: rgb(230 237 243);
+
+  /* ----------------------------------------------------------------------
+   * EA editor (ea-management) token bridge.
+   *
+   * The visual EA editor was ported from newTCN, which styled every flow
+   * component with (a) shadcn "semantic" tokens (muted/primary/destructive/
+   * ring/popover/…) and (b) a raw GitLab brand palette (`gl-*`). Aether's own
+   * palette only declares a subset of those, so we declare the rest HERE,
+   * remapped onto GitHub Dark, instead of editing ~45 ported component files.
+   * Single source of truth for the editor's colors — no stray GitLab hex.
+   *
+   * shadcn semantic aliases the ported components reference but Aether's core
+   * theme above doesn't expose. Anchored to the GitHub Dark tokens already
+   * defined above.
+   * -------------------------------------------------------------------- */
+  --color-muted: rgb(33 38 45); /* #21262d — elevated/inset surfaces */
+  --color-muted-foreground: rgb(125 133 144); /* = foreground-muted */
+  --color-primary: rgb(47 129 247); /* = accent (GitHub blue) */
+  --color-primary-foreground: rgb(255 255 255);
+  --color-secondary: rgb(137 87 229); /* GitHub purple #8957e5 */
+  --color-secondary-foreground: rgb(255 255 255);
+  --color-destructive: rgb(218 54 51); /* = danger #da3633 */
+  --color-destructive-foreground: rgb(255 255 255);
+  --color-ring: rgb(47 129 247); /* focus ring = accent */
+  --color-popover: rgb(22 27 34); /* = card */
+  --color-popover-foreground: rgb(230 237 243);
+
+  /* Raw GitLab brand palette, REMAPPED to GitHub Dark equivalents. The token
+   * NAMES are kept (the ported `nodeColors.ts` / handle classes reference them
+   * literally so Tailwind's JIT can see complete class strings); only the VALUES
+   * change. Blue→GitHub blue, orange→GitHub orange/amber, green/red→GitHub
+   * success/danger, purple→GitHub purple, gray ramp→GitHub surface ramp. */
+  --color-gl-tanuki-red: rgb(248 81 73); /* #f85149 */
+  --color-gl-orange-500: rgb(219 109 40); /* #db6d28 — node accent (orange) */
+  --color-gl-orange-300: rgb(227 131 60); /* #e3833c */
+  --color-gl-blue-500: rgb(47 129 247); /* #2f81f7 */
+  --color-gl-blue-600: rgb(31 111 235); /* #1f6feb */
+  --color-gl-purple-500: rgb(137 87 229); /* #8957e5 */
+  --color-gl-purple-300: rgb(163 113 247); /* #a371f7 */
+  --color-gl-green-500: rgb(35 134 54); /* #238636 */
+  --color-gl-green-300: rgb(46 160 67); /* #2ea043 */
+  --color-gl-red-500: rgb(218 54 51); /* #da3633 */
+  --color-gl-red-400: rgb(248 81 73); /* #f85149 */
+  --color-gl-gray-1000: rgb(1 4 9); /* #010409 — editor canvas (darkest) */
+  --color-gl-gray-950: rgb(13 17 23); /* #0d1117 — page background */
+  --color-gl-gray-900: rgb(22 27 34); /* #161b22 — node/chrome surface */
+  --color-gl-gray-800: rgb(33 38 45); /* #21262d */
+  --color-gl-gray-600: rgb(48 54 61); /* #30363d — borders */
+  --color-gl-gray-200: rgb(201 209 217); /* #c9d1d9 */
+  --color-gl-gray-50: rgb(230 237 243); /* #e6edf3 */
 }
 
 :root {

@@ -66,6 +66,7 @@ EXPECTED_TABLES = {
     "chat_conversations",
     "chat_messages",
     "chat_action_proposals",
+    "eas",
 }
 
 

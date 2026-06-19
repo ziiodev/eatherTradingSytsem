@@ -25,13 +25,13 @@ Hard rules:
 - **No alternative web stacks** (Vite/CRA/Vue/Svelte) without explicit user approval. Frontend is Next.js 16 with App Router.
 - **shadcn/ui only** as the component library. No Mantine/MUI/Chakra/Ant Design/HeadlessUI without explicit approval.
 - **No CSS-in-JS** runtime (styled-components, Emotion runtime). Style via Tailwind v4 + theme CSS variables. CSS Modules acceptable as a punctual escape hatch.
-- **No MQL5. No MT5 Expert Advisors created by the system.** All trading logic lives in `agents.logica` and executes as Python in the backend; MT5 only receives orders through the MCP server.
+- **MQL5 / EA codegen — sanctioned exception (user decision 2026-06-19).** The historical "No MQL5 / no EAs created by the system" hard rule is relaxed by an explicit, dated operator decision authorizing the **`ea-management`** change (fuses newTCN's visual EA editor). Precise scope of the carve-out: the visual EA editor (sidebar section **"Gestión EAs"**) MAY generate **MQL5 and Python** Expert Advisor source as **user-owned artifacts**, and the system MAY **persist, version, and let users download/export** that generated source. PRESERVED invariants (still true, do NOT relax): the **trading-agent execution plane is unchanged** — `agents.logica` runtime stays CHECK-constrained to `'python'` and EA codegen is a separate artifact lane, never agent execution logic; the generated-Python→Worker bridge and any **auto-deployment of generated EAs to a live MT5 instance are OUT OF SCOPE / still gated for a future change**. Worker trading logic continues to live in `agents.logica` (Python) and reaches MT5 only through MCP.
 
 ## Product: Aether Trading System
 
 A multi-agent automated trading system that operates on MetaTrader 5 via **MCP (Model Context Protocol)**. All trading logic lives in Python; orders go to MT5 through MCP tools.
 
-**Hard constraint — never violate:** Do not generate MQL5 code. MT5 is treated as an execution endpoint reached through MCP only.
+**Trading-plane constraint:** the Worker reaches MT5 only as an execution endpoint through MCP, and `agents.logica` runtime is Python-only — that part is unchanged. **Sanctioned exception (user decision 2026-06-19):** the previously absolute "do not generate MQL5 code" rule is carved out for the `ea-management` feature. The "Gestión EAs" visual editor MAY generate MQL5 and Python EA source as user artifacts, and the system MAY store/export them. This carve-out does NOT extend to the agent execution plane: generated EAs are not auto-deployed to live MT5 and there is no generated-code→Worker bridge (both OUT OF SCOPE / gated for a future change).
 
 ### Agent topology
 

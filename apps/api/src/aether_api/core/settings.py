@@ -439,6 +439,21 @@ class Settings(BaseSettings):
     )
 
     # ------------------------------------------------------------------
+    # EA management — visual Expert Advisor authoring surface.
+    # See ``sdd/ea-management/{spec,design,tasks}``.
+    # ------------------------------------------------------------------
+    #: Master flag for the EA-management surface (the ``/api/eas`` CRUD +
+    #: codegen router and the frontend "Gestión EAs" sidebar entry).
+    #: Defaults to False — operators opt in explicitly. When False the
+    #: router is NOT mounted at all (every ``/api/eas/*`` request → 404)
+    #: and ``GET /api/health`` reports ``features.eas_enabled = false``.
+    #: Mirrors the ``learning_enabled`` / ``chat_enabled`` opt-in pattern.
+    eas_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("AETHER_EAS_ENABLED", "EAS_ENABLED"),
+    )
+
+    # ------------------------------------------------------------------
     # pydantic-settings config
     # ------------------------------------------------------------------
     model_config = SettingsConfigDict(

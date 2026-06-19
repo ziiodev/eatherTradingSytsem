@@ -15,6 +15,7 @@ from aether_api.models.chat_conversation import ChatConversation
 from aether_api.models.chat_message import ChatMessage
 from aether_api.models.config_version import ConfigVersion
 from aether_api.models.container_event import ContainerEvent
+from aether_api.models.ea import EA
 from aether_api.models.episodic_memory import EpisodicMemory
 from aether_api.models.exchange import Exchange
 from aether_api.models.mfa_recovery_code import MfaRecoveryCode
@@ -40,6 +41,7 @@ __all__ = [
     "ChatMessage",
     "ConfigVersion",
     "ContainerEvent",
+    "EA",
     "EpisodicMemory",
     "Exchange",
     "MfaRecoveryCode",

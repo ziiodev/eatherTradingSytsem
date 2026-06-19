@@ -49,6 +49,7 @@ from aether_api.routers.accounts import router as accounts_router
 from aether_api.routers.agents import router as agents_router
 from aether_api.routers.audit_log import router as audit_log_router
 from aether_api.routers.chat import router as chat_router
+from aether_api.routers.eas import router as eas_router
 from aether_api.routers.exchanges import router as exchanges_router
 from aether_api.routers.learning import router as learning_router
 from aether_api.routers.me import router as me_router
@@ -524,6 +525,13 @@ def create_app() -> FastAPI:
     # auth/origin gates enforced inside the handler.
     if settings.operativa_ws_enabled:
         app.include_router(operativa_ws_router)
+    # EA management — visual Expert Advisor authoring + dual-target codegen.
+    # Feature-flagged: when ``AETHER_EAS_ENABLED`` is False the router is NOT
+    # mounted at all (every ``/api/eas/*`` request → 404). The frontend reads
+    # ``GET /api/health`` (features.eas_enabled) to decide whether to render the
+    # "Gestión EAs" sidebar entry. See ``sdd/ea-management``.
+    if settings.eas_enabled:
+        app.include_router(eas_router)
     # JWKS — published at the canonical /.well-known location for sister
     # services and the edge middleware to verify RS256 access tokens.
     app.include_router(jwks_router)
@@ -551,6 +559,7 @@ def create_app() -> FastAPI:
                 "learning_enabled": bool(current.learning_enabled),
                 "chat_enabled": bool(current.chat_enabled)
                 and current.anthropic_api_key is not None,
+                "eas_enabled": bool(current.eas_enabled),
             },
         }
 

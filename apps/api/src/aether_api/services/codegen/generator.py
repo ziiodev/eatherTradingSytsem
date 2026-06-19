@@ -1,0 +1,147 @@
+"""Graph dispatcher — assembles a full MQL5 Expert Advisor from a node graph.
+
+It topologically orders the nodes (Start first, following edges) and asks each
+registered per-node generator for its snippet, wrapping everything in a standard
+MQL5 EA skeleton (OnInit / OnTick / OnDeinit).
+
+The language-agnostic graph layer (ordering, guard placement, value-indicator
+hoisting, copy-depth) now lives in :mod:`graph` and :mod:`copy_depth`; this module
+RE-EXPORTS those names so existing imports across the codebase (and the test
+suite) keep working unchanged.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from aether_api.services.codegen.copy_depth import (
+    _indicator_copy_depth,
+    _zscore_copy_depth,
+)
+from aether_api.services.codegen.graph import (
+    _COMBINATOR_TYPES,
+    _CROSSING_TYPES,
+    _GUARD_TYPES,
+    _combinator_fed_condition_ids,
+    _hoist_value_indicators,
+    _operand_read_index,
+    _operand_shift,
+    _order_nodes,
+    _place_guards,
+    resolve_node_type,
+)
+from aether_api.services.codegen.helpers import param
+from aether_api.services.codegen.registry import get_generator
+from aether_api.services.codegen.types import Connections, Node, RenderContext
+
+# Re-exported for backward compatibility: callers (and tests) still import these
+# symbols from ``generator``. The shared implementations live in graph/copy_depth.
+__all__ = [
+    "_COMBINATOR_TYPES",
+    "_CROSSING_TYPES",
+    "_GUARD_TYPES",
+    "_combinator_fed_condition_ids",
+    "_hoist_value_indicators",
+    "_indicator_copy_depth",
+    "_operand_read_index",
+    "_operand_shift",
+    "_order_nodes",
+    "_place_guards",
+    "_zscore_copy_depth",
+    "generate_mql5",
+    "resolve_node_type",
+]
+
+_INDENT = "   "
+
+
+def _node_type(node: Node) -> str:
+    """Resolve a node's type from `type` or nested `data.type`."""
+    return resolve_node_type(node)
+
+
+def _render_body(graph: dict[str, Any]) -> tuple[str, RenderContext]:
+    """Render the OnTick body, returning ``(body, ctx)``.
+
+    A single pre-render scan populates ``ctx.has_risk_node`` and
+    ``ctx.risk_percent`` (from the first RiskManagement node) before any node
+    generator runs, so nodes can gate on graph-level facts. The same ``ctx`` is
+    threaded into every generator via :class:`Connections` and may collect
+    deduplicated file-scope helpers along the way.
+    """
+    nodes: list[Node] = list(graph.get("nodes", []))
+    edges = list(graph.get("edges", []))
+
+    ctx = RenderContext()
+    # Node-by-id lookup so combinator generators can resolve incoming Condition
+    # ids -> node dicts (additive; empty for graphs without combinators).
+    ctx.nodes_by_id = {str(n.get("id", "")): n for n in nodes}
+    for node in nodes:
+        if resolve_node_type(node).lower() == "riskmanagement":
+            ctx.has_risk_node = True
+            ctx.risk_percent = param(node, "risk_percent", 1.0)
+            break
+
+    # Pre-render copy-depth scan: indicators feeding a crossing need s+2 bars
+    # (generic value-edge and operand-shift consumers are folded in but dormant).
+    # Threaded via ctx so the indicator modules emit the deeper CopyBuffer.
+    # Crossing-free graphs leave this empty (every indicator stays depth 1).
+    ctx.copy_depth = _indicator_copy_depth(nodes, edges)
+
+    connections = Connections(edges, context=ctx)
+    excluded_ids = _combinator_fed_condition_ids(nodes, edges)
+
+    ordered = _hoist_value_indicators(
+        _order_nodes(nodes, connections, excluded_ids), edges
+    )
+    lines: list[str] = []
+    for node in ordered:
+        ntype = _node_type(node)
+        generator = get_generator(ntype)
+        if generator is None:
+            lines.append(f"{_INDENT}// [unknown node type '{ntype}'] skipped")
+            continue
+        lines.append(generator(node, connections))
+    body = "\n".join(lines) if lines else f"{_INDENT}// (empty strategy)"
+    return body, ctx
+
+
+def generate_mql5(graph: dict[str, Any], ea_name: str = "GeneratedEA") -> str:
+    """Generate a complete MQL5 EA source string from a serialized graph."""
+    body, ctx = _render_body(graph)
+    # File-scope helper functions contributed by nodes (e.g. CalcLots). When no
+    # helper is registered, ``helpers_block()`` returns "" and we splice ZERO
+    # bytes — existing graphs stay byte-identical.
+    helpers = ctx.helpers_block()
+    helpers_section = f"{helpers}\n\n" if helpers else ""
+    # OnTick-prologue lines (e.g. ManageTrailing) spliced at the TOP of the
+    # OnTick body, before the DFS body and every entry guard. When no prologue
+    # is registered, ``prologue_block()`` returns "" and we splice ZERO bytes —
+    # existing graphs stay byte-identical.
+    prologue = ctx.prologue_block()
+    prologue_section = f"{prologue}\n" if prologue else ""
+    return (
+        "//+------------------------------------------------------------------+\n"
+        f"//| {ea_name}.mq5 — generated by TechainClone                        |\n"
+        "//+------------------------------------------------------------------+\n"
+        "#property strict\n"
+        "#include <Trade/Trade.mqh>\n"
+        "\n"
+        "CTrade trade;\n"
+        "\n"
+        f"{helpers_section}"
+        "int OnInit()\n"
+        "{\n"
+        "   return(INIT_SUCCEEDED);\n"
+        "}\n"
+        "\n"
+        "void OnDeinit(const int reason)\n"
+        "{\n"
+        "}\n"
+        "\n"
+        "void OnTick()\n"
+        "{\n"
+        f"{prologue_section}"
+        f"{body}\n"
+        "}\n"
+    )
